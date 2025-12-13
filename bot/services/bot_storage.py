@@ -93,6 +93,18 @@ class DjangoStorage:
             raise
 
     @sync_to_async
+    def is_staff(self, user_id: int) -> bool:
+        """Проверка, является ли пользователь staff"""
+        try:
+            profile = TelegramProfile.objects.select_related('user').get(telegram_id=user_id)
+            return profile.user.is_staff
+        except TelegramProfile.DoesNotExist:
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка проверки is_staff: {e}")
+            return False
+
+    @sync_to_async
     def get_statistics(self) -> dict:
         """Получение статистики по пользователям и состояниям"""
         try:

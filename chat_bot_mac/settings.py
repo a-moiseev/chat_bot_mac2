@@ -134,7 +134,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Telegram Bot Settings
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 MASTER_NAME = os.getenv('MASTER_NAME', 'eremenko_natali')
-SUPERUSERS = os.getenv('SUPERUSERS', '').split(',')
 
 # Redis Settings (optional)
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')

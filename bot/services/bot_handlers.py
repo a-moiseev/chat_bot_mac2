@@ -124,9 +124,6 @@ class MacBot:
         # Используем логгер из Django settings
         self.logger = logging.getLogger("mac_bot")
 
-        # Суперюзеры из settings
-        self.superusers = settings.SUPERUSERS
-
     def _create_storage(self) -> BaseStorage:
         """Создает хранилище состояний для бота"""
         # Проверяем, включен ли Redis через переменную окружения
@@ -220,9 +217,11 @@ class MacBot:
             hours_to_new_card = (
                 24 - (datetime.now() - last_request_time).seconds // 3600
             )
+            # Проверяем is_staff - staff пользователи могут обходить cooldown
+            is_staff = await self.db.is_staff(message.from_user.id)
             if (
                 datetime.now() - last_request_time < timedelta(days=1)
-                and message.from_user.username not in self.superusers
+                and not is_staff
             ):
                 self.logger.info(
                     f"Try to get new card before timeout: {message.from_user.full_name} "
@@ -490,7 +489,7 @@ class MacBot:
             )
 
     async def send_all_handler(self, message: Message) -> None:
-        if message.from_user.username not in self.superusers:
+        if not await self.db.is_staff(message.from_user.id):
             await message.answer("У вас нет прав для выполнения этой команды")
             return
 
@@ -525,7 +524,7 @@ class MacBot:
         )
 
     async def stats_handler(self, message: Message) -> None:
-        if message.from_user.username not in self.superusers:
+        if not await self.db.is_staff(message.from_user.id):
             return
 
         try:
