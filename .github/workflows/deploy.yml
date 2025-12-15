@@ -1,0 +1,49 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.10
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          ALLOWED_HOSTS: ${{ vars.ALLOWED_HOSTS }}
+          MASTER_NAME: ${{ vars.MASTER_NAME }}
+          USE_REDIS: ${{ vars.USE_REDIS }}
+          REDIS_HOST: ${{ vars.REDIS_HOST }}
+          REDIS_PORT: ${{ vars.REDIS_PORT }}
+          REDIS_DB: ${{ vars.REDIS_DB }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: SECRET_KEY,TELEGRAM_BOT_TOKEN,REDIS_PASSWORD,ALLOWED_HOSTS,MASTER_NAME,USE_REDIS,REDIS_HOST,REDIS_PORT,REDIS_DB
+          script: |
+            cd /opt/chat_bot_mac
+
+            export SECRET_KEY="$SECRET_KEY"
+            export TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN"
+            export REDIS_PASSWORD="$REDIS_PASSWORD"
+            export ALLOWED_HOSTS="$ALLOWED_HOSTS"
+            export MASTER_NAME="$MASTER_NAME"
+            export USE_REDIS="$USE_REDIS"
+            export REDIS_HOST="$REDIS_HOST"
+            export REDIS_PORT="$REDIS_PORT"
+            export REDIS_DB="$REDIS_DB"
+            export DEBUG="False"
+
+            git pull origin master
+
+            docker-compose build
+            docker-compose up -d
+
+            sleep 5
+            docker-compose ps
+            docker-compose logs --tail=50 bot
