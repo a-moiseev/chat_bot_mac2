@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code Style
+
+- Comment only complex or non-obvious logic
+- Do not use emojis in code, comments, or commit messages
+- Keep code clean and self-documenting
+
 ## Project Overview
 
 This is a Django-based Telegram bot (mac_bot_2) that provides psychological/coaching card reading sessions to users. The bot uses aiogram 3.0 for Telegram integration and Django for data persistence. Users receive a random card image (day/night variants) and are guided through a structured conversation to reflect on their request.
@@ -193,3 +199,48 @@ When testing bot changes:
 - `UserState` records are created for every state transition (audit trail)
 - Subscription fields exist but are not currently used in bot logic
 - `last_request_time` tracking is handled in FSM state data, not in database model
+
+## Deployment
+
+Project uses Docker Compose for deployment to VPS.
+
+### Architecture
+```
+Internet → Nginx (80/443) → Django (8000)
+                          ↓
+                       Bot (polling) ← → Redis (host)
+```
+
+### Files
+- `Dockerfile` - Python 3.13 image for Django + Bot
+- `docker-compose.yml` - 3 services: nginx, django, bot
+- `nginx.conf` - reverse proxy configuration
+- `.github/workflows/deploy.yml` - auto-deploy on push to master
+- `backup.sh` - automated backups (SQLite + Redis)
+
+### Environment Variables
+All configuration via environment variables (no .env files in repo):
+- GitHub Secrets: SECRET_KEY, TELEGRAM_BOT_TOKEN, VPS credentials
+- GitHub Variables: ALLOWED_HOSTS, MASTER_NAME, Redis settings
+
+### Bot Service
+Uses `network_mode: host` to access existing Redis on VPS localhost.
+Existing Redis data from old bot version is preserved.
+
+### Common Commands
+```bash
+docker-compose build
+docker-compose up -d
+docker-compose logs -f bot
+docker-compose restart django bot
+```
+
+### Deployment Process
+1. Push to master branch
+2. GitHub Actions triggers
+3. SSH to VPS, pull code
+4. Rebuild containers
+5. Restart services
+6. Verify with logs
+
+See plan file for full deployment instructions.
