@@ -11,7 +11,7 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - django
-    restart: unless-stopped
+    restart: always
 
   django:
     build: .
@@ -28,7 +28,7 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - MASTER_NAME=${MASTER_NAME}
       - USE_REDIS=False
-    restart: unless-stopped
+    restart: always
 
   bot:
     build: .
@@ -47,4 +47,4 @@ services:
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
-    restart: unless-stopped
+    restart: always
