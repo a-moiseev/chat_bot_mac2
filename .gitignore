@@ -209,3 +209,4 @@ __marimo__/
 .python-version
 media/images/day/
 media/images/night/
+config/messages.yaml
