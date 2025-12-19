@@ -1,9 +1,8 @@
 import pytest
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User as DjangoUser
-from django.utils import timezone
-from datetime import timedelta
-from bot.models import TelegramProfile, StateType, UserState
+
+from bot.models import StateType, TelegramProfile, UserState
 
 
 @pytest.mark.asyncio
