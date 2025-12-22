@@ -174,7 +174,9 @@ class Payment(models.Model):
         Subscription,
         on_delete=models.PROTECT,
         related_name='payments',
-        verbose_name='Тарифный план'
+        verbose_name='Тарифный план',
+        null=True,
+        blank=True
     )
 
     # Данные Prodamus

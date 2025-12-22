@@ -43,15 +43,23 @@ docker compose down
 ### First Time Setup
 
 ```bash
-# Run migrations
+# Migrations run automatically on container start via entrypoint.sh
+# But you can run them manually if needed:
 docker compose exec django python manage.py migrate
 
 # Create superuser
 docker compose exec django python manage.py createsuperuser
 
-# Collect static files
-docker compose exec django python manage.py collectstatic --noinput
+# Create subscription plans (runs automatically on deployment)
+docker compose exec django python manage.py create_subscriptions
 ```
+
+### Automatic Migrations
+
+Migrations run automatically when Django container starts:
+- Database migrations (`python manage.py migrate`)
+- Subscription plans creation (`python manage.py create_subscriptions`)
+- Static files collection (`python manage.py collectstatic`)
 
 ## Testing
 
@@ -76,10 +84,14 @@ pytest tests/test_models.py::TestTelegramProfile::test_is_subscribed_free -v
 
 ### Test Coverage
 
-Current test coverage: **82.83%**
+Total: **66 tests** passing | **85% coverage**
 
-- `bot/models.py` - 86% coverage
+Key modules coverage:
+- `bot/services/prodamus_service.py` - 100% coverage
+- `bot/models.py` - 89% coverage
 - `bot/services/bot_storage.py` - 76% coverage
+- `bot/admin.py` - 100% coverage
+- `bot/views.py` - Fully tested (webhook + success page)
 
 View detailed coverage report:
 ```bash
@@ -92,6 +104,8 @@ open htmlcov/index.html
 Tests are located in `tests/` directory:
 - `test_models.py` - Model tests (TelegramProfile, Subscription, Payment, UserSession)
 - `test_storage.py` - DjangoStorage async methods tests
+- `test_prodamus_service.py` - ProdamusService integration tests (payment links, signatures, webhooks)
+- `test_views.py` - Views tests (webhook handler, success page)
 - `conftest.py` - Shared fixtures
 
 Example test:
@@ -107,3 +121,15 @@ def test_example(telegram_profile):
 ## CI/CD
 
 GitHub Actions automatically runs tests and deploys on push to `master`.
+
+**Deployment process:**
+1. Run tests with migrations
+2. Deploy to VPS via SSH
+3. Pull latest code
+4. Rebuild Docker containers
+5. **Migrations run automatically** via entrypoint script
+6. Restart services
+
+**Required GitHub configuration:**
+- **Secrets**: `SECRET_KEY`, `TELEGRAM_BOT_TOKEN`, `PRODAMUS_SECRET_KEY`, VPS credentials
+- **Variables**: `ALLOWED_HOSTS`, `BASE_URL`, `PRODAMUS_MERCHANT_URL`, `PRODAMUS_TEST_MODE`

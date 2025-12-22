@@ -8,8 +8,11 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 COPY . .
 
 RUN mkdir -p staticfiles media
-RUN python manage.py collectstatic --noinput || true
+
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "chat_bot_mac.wsgi:application", "--bind", "0.0.0.0:8000"]

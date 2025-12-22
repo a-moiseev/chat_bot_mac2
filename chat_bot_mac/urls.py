@@ -21,8 +21,13 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 
+from bot import views
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Prodamus payment integration
+    path("api/prodamus/webhook", views.prodamus_webhook, name="prodamus_webhook"),
+    path("api/prodamus/success", views.prodamus_success, name="prodamus_success"),
 ]
 
 if settings.DEBUG:

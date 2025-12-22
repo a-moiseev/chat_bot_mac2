@@ -146,6 +146,17 @@ REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_DB = int(os.getenv('REDIS_DB', '0'))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', None)
 
+# Prodamus Payment System Settings
+PRODAMUS_MERCHANT_URL = os.getenv('PRODAMUS_MERCHANT_URL', 'https://demo.payform.ru/')
+PRODAMUS_SECRET_KEY = os.getenv('PRODAMUS_SECRET_KEY', '')
+PRODAMUS_TEST_MODE = os.getenv('PRODAMUS_TEST_MODE', 'True').lower() == 'true'
+
+# Prodamus Callback URLs
+BASE_URL = os.getenv('BASE_URL', 'http://localhost:8000')
+PRODAMUS_WEBHOOK_URL = os.getenv('PRODAMUS_WEBHOOK_URL', f'{BASE_URL}/api/prodamus/webhook')
+PRODAMUS_SUCCESS_URL = os.getenv('PRODAMUS_SUCCESS_URL', f'{BASE_URL}/api/prodamus/success')
+PRODAMUS_RETURN_URL = os.getenv('PRODAMUS_RETURN_URL', 'https://t.me/your_bot_username')
+
 # Logging
 LOGGING = {
     'version': 1,

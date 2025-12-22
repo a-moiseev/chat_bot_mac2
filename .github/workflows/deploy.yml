@@ -46,17 +46,21 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          PRODAMUS_SECRET_KEY: ${{ secrets.PRODAMUS_SECRET_KEY }}
           ALLOWED_HOSTS: ${{ vars.ALLOWED_HOSTS }}
           MASTER_NAME: ${{ vars.MASTER_NAME }}
           USE_REDIS: ${{ vars.USE_REDIS }}
           REDIS_HOST: ${{ vars.REDIS_HOST }}
           REDIS_PORT: ${{ vars.REDIS_PORT }}
           REDIS_DB: ${{ vars.REDIS_DB }}
+          PRODAMUS_MERCHANT_URL: ${{ vars.PRODAMUS_MERCHANT_URL }}
+          PRODAMUS_TEST_MODE: ${{ vars.PRODAMUS_TEST_MODE }}
+          BASE_URL: ${{ vars.BASE_URL }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: SECRET_KEY,TELEGRAM_BOT_TOKEN,REDIS_PASSWORD,ALLOWED_HOSTS,MASTER_NAME,USE_REDIS,REDIS_HOST,REDIS_PORT,REDIS_DB
+          envs: SECRET_KEY,TELEGRAM_BOT_TOKEN,REDIS_PASSWORD,PRODAMUS_SECRET_KEY,ALLOWED_HOSTS,MASTER_NAME,USE_REDIS,REDIS_HOST,REDIS_PORT,REDIS_DB,PRODAMUS_MERCHANT_URL,PRODAMUS_TEST_MODE,BASE_URL
           script: |
             cd /opt/chat_bot_mac
 
@@ -69,6 +73,10 @@ jobs:
             export REDIS_HOST="$REDIS_HOST"
             export REDIS_PORT="$REDIS_PORT"
             export REDIS_DB="$REDIS_DB"
+            export PRODAMUS_MERCHANT_URL="$PRODAMUS_MERCHANT_URL"
+            export PRODAMUS_SECRET_KEY="$PRODAMUS_SECRET_KEY"
+            export PRODAMUS_TEST_MODE="$PRODAMUS_TEST_MODE"
+            export BASE_URL="$BASE_URL"
             export DEBUG="False"
 
             git pull origin master
@@ -76,6 +84,14 @@ jobs:
             docker compose build
             docker compose up -d
 
-            sleep 5
+            echo "Waiting for services to start..."
+            sleep 10
+
+            echo "Service status:"
             docker compose ps
-            docker compose logs --tail=50 bot
+
+            echo "Django logs:"
+            docker compose logs --tail=30 django
+
+            echo "Bot logs:"
+            docker compose logs --tail=30 bot
