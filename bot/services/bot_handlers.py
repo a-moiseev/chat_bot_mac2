@@ -1,15 +1,11 @@
 import asyncio
 import logging
 import random
-import sys
-from datetime import datetime, timedelta
 
 import yaml
-from django.conf import settings
-
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ContentType, ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,7 +20,9 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
+from django.conf import settings
 from redis.asyncio import Redis
 
 from bot.services.bot_storage import DjangoStorage
@@ -100,7 +98,7 @@ def make_row_keyboard(items: list[str]) -> ReplyKeyboardMarkup:
 class MacBot:
     def __init__(self):
         # Загружаем сообщения из config/messages.yaml
-        messages_path = settings.BASE_DIR / 'config' / 'messages.yaml'
+        messages_path = settings.BASE_DIR / "config" / "messages.yaml"
         self.messages = self._load_config(str(messages_path))
 
         # Создаем бота с токеном из settings
@@ -128,15 +126,18 @@ class MacBot:
         """Создает хранилище состояний для бота"""
         # Проверяем, включен ли Redis через переменную окружения
         import os
+
         logger = logging.getLogger("mac_bot")
-        use_redis = os.getenv('USE_REDIS', 'False').lower() == 'true'
+        use_redis = os.getenv("USE_REDIS", "False").lower() == "true"
 
         if not use_redis:
             logger.info("Используется MemoryStorage для FSM")
             return MemoryStorage()
 
         try:
-            logger.info(f"Подключение к Redis: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+            logger.info(
+                f"Подключение к Redis: {settings.REDIS_HOST}:{settings.REDIS_PORT}"
+            )
             redis = Redis(
                 host=settings.REDIS_HOST,
                 port=settings.REDIS_PORT,
@@ -147,7 +148,9 @@ class MacBot:
             logger.info("RedisStorage успешно инициализирован")
             return RedisStorage(redis=redis)
         except Exception as e:
-            logger.error(f"Ошибка подключения к Redis: {e}. Переключаемся на MemoryStorage")
+            logger.error(
+                f"Ошибка подключения к Redis: {e}. Переключаемся на MemoryStorage"
+            )
             return MemoryStorage()
 
     async def log_state_change(
@@ -168,6 +171,12 @@ class MacBot:
         self.dp.message.register(self.command_start_handler, CommandStart())
         self.dp.message.register(self.send_all_handler, Command("send_all"))
         self.dp.message.register(self.stats_handler, Command("stats"))
+        self.dp.message.register(self.subscribe_handler, Command("subscribe"))
+
+        # WebApp data handler
+        self.dp.message.register(
+            self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA
+        )
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
         self.dp.message.register(
@@ -210,36 +219,49 @@ class MacBot:
             f"(@{message.from_user.username}, ID: {message.from_user.id})"
         )
 
-        data = await state.get_data()
-        last_request_time = data.get("last_request_time")
-        if last_request_time:
-            last_request_time = datetime.fromisoformat(last_request_time)
-            hours_to_new_card = (
-                24 - (datetime.now() - last_request_time).seconds // 3600
-            )
-            # Проверяем is_staff - staff пользователи могут обходить cooldown
-            is_staff = await self.db.is_staff(message.from_user.id)
-            if (
-                datetime.now() - last_request_time < timedelta(days=1)
-                and not is_staff
-            ):
-                self.logger.info(
-                    f"Try to get new card before timeout: {message.from_user.full_name} "
-                    f"(@{message.from_user.username}, ID: {message.from_user.id})"
-                )
-
-                await message.answer(
-                    f"Приходи за новой картой через {hours_to_new_card} "
-                    f"{get_hour_declension(hours_to_new_card)}.",
-                    reply_markup=ReplyKeyboardRemove(),
-                )
-                return
-
+        # Создаем/обновляем пользователя
         await self.db.add_user(
             user_id=message.from_user.id,
             username=message.from_user.username,
             full_name=message.from_user.full_name,
         )
+
+        # Проверяем лимит сессий (staff пользователи обходят лимит)
+        is_staff = await self.db.is_staff(message.from_user.id)
+        can_start = await self.db.can_start_session(message.from_user.id)
+
+        if not can_start and not is_staff:
+            # Получаем информацию о подписке для сообщения
+            profile = await self.db.get_user(message.from_user.id)
+            session_limit = profile.get_daily_session_limit() if profile else 1
+
+            self.logger.info(
+                f"Session limit reached for {message.from_user.full_name} "
+                f"(@{message.from_user.username}, ID: {message.from_user.id})"
+            )
+
+            # Сообщение зависит от типа подписки
+            if (
+                profile
+                and profile.current_subscription
+                and profile.current_subscription.code == "free"
+            ):
+                msg = (
+                    f"⏳ Вы использовали дневной лимит ({session_limit} сессия).\n\n"
+                    f"✨ Хотите больше сессий в день?\n"
+                    f"Оформите премиум подписку:\n"
+                    f"• 3 сессии в день\n"
+                    f"• Все 81 карта\n\n"
+                    f"Используйте команду /subscribe для оформления подписки."
+                )
+            else:
+                msg = (
+                    f"⏳ Вы использовали дневной лимит ({session_limit} сессии).\n"
+                    f"Возвращайтесь завтра!"
+                )
+
+            await message.answer(msg, reply_markup=ReplyKeyboardRemove())
+            return
 
         await message.answer(
             self.messages["message_1"], reply_markup=ReplyKeyboardRemove()
@@ -297,21 +319,44 @@ class MacBot:
         await self.log_state_change(
             message.from_user.id, message.from_user.username, MacStates.work_1
         )
-        # Send image based on card type
-        card_type = (await state.get_data()).get("card_type")
-        image_number = random.randint(1, 10)
+
+        # Получаем данные из состояния
+        data = await state.get_data()
+        card_type = data.get("card_type")
+        request_text = data.get("request", "")
+        request_type = data.get("request_type", "")
+
+        # Получаем лимит карт на основе подписки
+        # Free: cards_limit = 10, Premium: cards_limit = None
+        cards_limit = await self.db.get_user_cards_limit(message.from_user.id)
+
+        # Путь к папке с картами
+        cards_folder = settings.MEDIA_ROOT / "images" / CARD_FOLDER[card_type]
+
+        # Получаем количество доступных карт из файловой системы
+        total_cards = len(list(cards_folder.glob("*.jpg")))
+
+        # None = без ограничений (premium), иначе используем лимит
+        max_card_number = total_cards if cards_limit is None else min(cards_limit, total_cards)
+
+        image_number = random.randint(1, max_card_number)
         image_name = f"{image_number:05}.jpg"
-        # Используем MEDIA_ROOT из Django settings
-        image_path = settings.MEDIA_ROOT / 'images' / CARD_FOLDER[card_type] / image_name
+        image_path = cards_folder / image_name
+
+        # Создаем запись сессии в БД
+        await self.db.create_session(
+            user_id=message.from_user.id,
+            request_text=request_text,
+            request_type=request_type,
+            card_type=card_type,
+            card_number=image_number,
+        )
 
         photo = FSInputFile(str(image_path))
         await message.answer_photo(photo, caption=self.messages["messages_work"][2])
         await message.answer(
             self.messages["messages_work"][3], reply_markup=ReplyKeyboardRemove()
         )
-
-        last_request_time = datetime.now().isoformat()
-        await state.update_data(last_request_time=last_request_time)
 
         asyncio.create_task(self.send_reminder(message))
 
@@ -466,6 +511,10 @@ class MacBot:
             ]
         )
         await message.answer(self.messages["messages_work"][27], reply_markup=keyboard)
+
+        # Завершаем сессию в БД
+        await self.db.complete_latest_session(message.from_user.id)
+
         await self.log_state_change(
             message.from_user.id, message.from_user.username, MacStates.work_finish
         )
@@ -540,6 +589,123 @@ class MacBot:
         except Exception as e:
             self.logger.error(f"Ошибка получения статистики: {e}")
             await message.answer("Произошла ошибка при получении статистики")
+
+    async def subscribe_handler(self, message: Message) -> None:
+        """Обработчик команды /subscribe - показывает информацию о подписке"""
+        user_id = message.from_user.id
+        username = message.from_user.username or "Unknown"
+
+        try:
+            # Получаем профиль пользователя
+            profile = await self.db.get_user(user_id)
+
+            if not profile:
+                await message.answer("Ошибка: профиль не найден. Используйте /start")
+                return
+
+            # Проверяем текущую подписку
+            current_sub = profile.current_subscription
+            is_premium = current_sub and current_sub.code != "free"
+
+            if is_premium and profile.subscription_expires_at:
+                # Пользователь уже premium
+                expires_date = profile.subscription_expires_at.strftime("%d.%m.%Y")
+                msg = f"""✨ <b>Ваша подписка</b>
+
+📋 Тариф: <b>{current_sub.name}</b>
+💰 Стоимость: {current_sub.price}₽
+📅 Действует до: <b>{expires_date}</b>
+
+⚡️ Доступные возможности:
+• {current_sub.daily_sessions_limit} сессии в день
+• {current_sub.cards_limit} карт (полная колода)
+
+Для продления подписки выберите тариф ниже."""
+            else:
+                # Free пользователь
+                msg = """💳 <b>Выберите тариф подписки</b>
+
+🆓 <b>Бесплатный тариф</b> (текущий):
+• 1 сессия в день
+• 20 карт (первые 10 из каждой колоды)
+
+✨ <b>Премиум тариф</b>:
+• 3 сессии в день
+• Все 81 карта (полная колода День + Ночь)
+• Без ограничений доступа
+
+Выберите тариф для оформления подписки:"""
+
+            # Кнопка для открытия WebApp
+            webapp_url = f"{settings.BASE_URL}/static/webapp/index.html"
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="💳 Выбрать тариф", web_app=WebAppInfo(url=webapp_url)
+                        )
+                    ]
+                ]
+            )
+
+            await message.answer(msg, reply_markup=keyboard)
+
+        except Exception as e:
+            self.logger.error(f"Ошибка в subscribe_handler: {e}")
+            await message.answer("Произошла ошибка. Попробуйте позже.")
+
+    async def webapp_data_handler(self, message: Message) -> None:
+        """Обработчик данных из WebApp - обработка выбора тарифа"""
+        user_id = message.from_user.id
+        username = message.from_user.username
+
+        try:
+            import json
+
+            # Парсим данные из WebApp
+            data = json.loads(message.web_app_data.data)
+            plan_code = data.get("plan")
+
+            if not plan_code:
+                await message.answer("❌ Ошибка: тариф не выбран")
+                return
+
+            self.logger.info(f"User {username} ({user_id}) selected plan: {plan_code}")
+
+            # Создаем заказ на оплату
+            order_id, payment_url = await self.db.create_payment_order(
+                user_id=user_id, plan_code=plan_code, username=username
+            )
+
+            # Отправляем ссылку на оплату
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_url)]
+                ]
+            )
+
+            plan_names = {
+                "monthly": "Месячная премиум (300₽)",
+                "yearly": "Годовая премиум (3000₽)",
+            }
+            plan_name = plan_names.get(plan_code, plan_code)
+
+            await message.answer(
+                f"✨ <b>Оформление подписки</b>\n\n"
+                f"📋 Тариф: <b>{plan_name}</b>\n"
+                f"🔢 Заказ: <code>{order_id}</code>\n\n"
+                f"Нажмите кнопку ниже для оплаты:",
+                reply_markup=keyboard,
+            )
+
+        except ValueError as e:
+            self.logger.error(f"ValueError in webapp_data_handler: {e}")
+            await message.answer(f"❌ Ошибка: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Error in webapp_data_handler: {e}")
+            await message.answer(
+                "❌ Произошла ошибка при создании заказа. Попробуйте позже."
+            )
 
     async def start(self) -> None:
         """Запуск бота"""

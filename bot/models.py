@@ -12,7 +12,7 @@ class Subscription(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Цена (₽)')
     duration_days = models.IntegerField(verbose_name='Продолжительность (дни)')
     daily_sessions_limit = models.IntegerField(verbose_name='Лимит сессий в день')
-    cards_limit = models.IntegerField(verbose_name='Количество доступных карт')
+    cards_limit = models.IntegerField(verbose_name='Количество доступных карт', null=True, blank=True)
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     description = models.TextField(blank=True, verbose_name='Описание')
 
@@ -95,10 +95,8 @@ class TelegramProfile(models.Model):
         return self.get_daily_sessions_count() < self.get_daily_session_limit()
 
     def get_available_card_count(self):
-        """Получить количество доступных карт на основе подписки"""
-        if self.current_subscription:
-            return self.current_subscription.cards_limit
-        return 20  # Fallback для пользователей без подписки
+        """Получить количество доступных карт для одной колоды"""
+        return self.current_subscription.cards_limit
 
     def activate_subscription(self, subscription_plan):
         """Активировать подписку на указанный план"""
