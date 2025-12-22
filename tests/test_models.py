@@ -36,39 +36,41 @@ class TestTelegramProfile:
                 username="user2"
             )
 
-    def test_is_subscribed_inactive(self, telegram_profile):
-        """is_subscribed = False если subscription_active = False"""
-        telegram_profile.subscription_active = False
-        telegram_profile.save()
-        assert telegram_profile.is_subscribed is False
-
-    def test_is_subscribed_active_no_expiration(self, telegram_profile):
-        """is_subscribed = True если active и нет даты истечения"""
-        telegram_profile.subscription_active = True
-        telegram_profile.subscription_expires_at = None
-        telegram_profile.save()
+    def test_is_subscribed_free(self, telegram_profile):
+        """is_subscribed = True для бесплатного тарифа"""
+        # telegram_profile уже имеет free подписку из фикстуры
+        assert telegram_profile.current_subscription.code == 'free'
         assert telegram_profile.is_subscribed is True
 
+    def test_is_subscribed_no_subscription(self, django_user):
+        """is_subscribed = False если нет подписки"""
+        profile = TelegramProfile.objects.create(
+            user=django_user,
+            telegram_id=999888777,
+            current_subscription=None
+        )
+        assert profile.is_subscribed is False
+
     def test_is_subscribed_active_future(self, subscribed_profile):
-        """is_subscribed = True если active и дата в будущем"""
-        assert subscribed_profile.subscription_active is True
+        """is_subscribed = True если премиум и дата в будущем"""
+        assert subscribed_profile.current_subscription.code == 'monthly'
         assert subscribed_profile.subscription_expires_at > timezone.now()
         assert subscribed_profile.is_subscribed is True
 
     def test_is_subscribed_expired(self, expired_profile):
-        """is_subscribed = False если дата истекла"""
-        assert expired_profile.subscription_active is True
+        """is_subscribed = False если премиум подписка истекла"""
+        assert expired_profile.current_subscription.code == 'monthly'
         assert expired_profile.subscription_expires_at < timezone.now()
         assert expired_profile.is_subscribed is False
 
     @freeze_time("2025-01-15 12:00:00")
-    def test_is_subscribed_exact_moment(self, django_user):
+    def test_is_subscribed_exact_moment(self, django_user, premium_subscription):
         """Проверка граничного случая - точный момент истечения"""
         exact_time = timezone.now()
         profile = TelegramProfile.objects.create(
             user=django_user,
             telegram_id=555666777,
-            subscription_active=True,
+            current_subscription=premium_subscription,
             subscription_expires_at=exact_time
         )
         assert profile.is_subscribed is False

@@ -53,6 +53,57 @@ docker compose exec django python manage.py createsuperuser
 docker compose exec django python manage.py collectstatic --noinput
 ```
 
+## Testing
+
+### Run Tests
+
+```bash
+# Run all tests with coverage
+pytest tests/ -v
+
+# Run with coverage report
+pytest tests/ -v --cov=bot --cov-report=html
+
+# Run specific test file
+pytest tests/test_models.py -v
+
+# Run specific test class
+pytest tests/test_models.py::TestTelegramProfile -v
+
+# Run specific test
+pytest tests/test_models.py::TestTelegramProfile::test_is_subscribed_free -v
+```
+
+### Test Coverage
+
+Current test coverage: **82.83%**
+
+- `bot/models.py` - 86% coverage
+- `bot/services/bot_storage.py` - 76% coverage
+
+View detailed coverage report:
+```bash
+pytest tests/ --cov=bot --cov-report=html
+open htmlcov/index.html
+```
+
+### Writing Tests
+
+Tests are located in `tests/` directory:
+- `test_models.py` - Model tests (TelegramProfile, Subscription, Payment, UserSession)
+- `test_storage.py` - DjangoStorage async methods tests
+- `conftest.py` - Shared fixtures
+
+Example test:
+```python
+import pytest
+from bot.models import TelegramProfile
+
+@pytest.mark.django_db
+def test_example(telegram_profile):
+    assert telegram_profile.is_subscribed is True
+```
+
 ## CI/CD
 
 GitHub Actions automatically runs tests and deploys on push to `master`.

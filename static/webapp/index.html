@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Выбор подписки</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="css/style.css" rel="stylesheet">
+
+    <!-- Telegram WebApp Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="mb-2">Выбери свой тариф</h1>
+            <p class="text-muted" id="user-greeting">Привет! Выбери подходящий план подписки</p>
+        </div>
+
+        <!-- Comparison Cards -->
+        <div class="row g-4 mb-4">
+            <!-- Free Plan -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body d-flex flex-column">
+                        <div class="text-center mb-3">
+                            <h3 class="card-title">Бесплатный</h3>
+                            <div class="display-6 fw-bold text-secondary">0₽</div>
+                            <small class="text-muted">навсегда</small>
+                        </div>
+
+                        <ul class="list-unstyled mb-4 flex-grow-1">
+                            <li class="mb-3">
+                                <svg class="bi text-success me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                <strong>1 сессия</strong> в день
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-success me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                Доступ к <strong>20 картам</strong>
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-success me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                Первые 10 карт каждой колоды
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-muted me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#x-circle-fill"/>
+                                </svg>
+                                <span class="text-muted">Полный доступ к картам</span>
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-muted me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#x-circle-fill"/>
+                                </svg>
+                                <span class="text-muted">Несколько сессий в день</span>
+                            </li>
+                        </ul>
+
+                        <button class="btn btn-outline-secondary btn-lg w-100" disabled>
+                            Текущий план
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Premium Plan -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow border-primary position-relative">
+                    <div class="position-absolute top-0 start-50 translate-middle">
+                        <span class="badge bg-primary px-3 py-2">Популярный</span>
+                    </div>
+
+                    <div class="card-body d-flex flex-column">
+                        <div class="text-center mb-3 mt-2">
+                            <h3 class="card-title text-primary">Премиум</h3>
+                            <div class="display-6 fw-bold text-primary">от 300₽</div>
+                            <small class="text-muted">в месяц</small>
+                        </div>
+
+                        <ul class="list-unstyled mb-4 flex-grow-1">
+                            <li class="mb-3">
+                                <svg class="bi text-primary me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                <strong>3 сессии</strong> в день
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-primary me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                Доступ ко <strong>всем 81 карте</strong>
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-primary me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                40 карт День + 41 карта Ночь
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-primary me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                Полный доступ ко всем картам
+                            </li>
+                            <li class="mb-3">
+                                <svg class="bi text-primary me-2" width="16" height="16" fill="currentColor">
+                                    <use xlink:href="#check-circle-fill"/>
+                                </svg>
+                                Без ограничений на выбор
+                            </li>
+                        </ul>
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-lg" onclick="selectPlan('monthly')">
+                                Месячная - 300₽
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="selectPlan('yearly')">
+                                Годовая - 3000₽
+                                <span class="badge bg-success ms-1">скидка 17%</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Подробное сравнение</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Возможность</th>
+                                <th class="text-center">Бесплатный</th>
+                                <th class="text-center">Премиум</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Сессий в день</td>
+                                <td class="text-center">1</td>
+                                <td class="text-center text-primary fw-bold">3</td>
+                            </tr>
+                            <tr>
+                                <td>Доступно карт</td>
+                                <td class="text-center">20 (первые 10 из каждой колоды)</td>
+                                <td class="text-center text-primary fw-bold">81 (все карты)</td>
+                            </tr>
+                            <tr>
+                                <td>Карты День</td>
+                                <td class="text-center">10 из 40</td>
+                                <td class="text-center text-primary fw-bold">Все 40</td>
+                            </tr>
+                            <tr>
+                                <td>Карты Ночь</td>
+                                <td class="text-center">10 из 41</td>
+                                <td class="text-center text-primary fw-bold">Все 41</td>
+                            </tr>
+                            <tr>
+                                <td>Психотерапевтический подход</td>
+                                <td class="text-center">
+                                    <svg class="bi text-success" width="20" height="20" fill="currentColor">
+                                        <use xlink:href="#check-circle-fill"/>
+                                    </svg>
+                                </td>
+                                <td class="text-center">
+                                    <svg class="bi text-success" width="20" height="20" fill="currentColor">
+                                        <use xlink:href="#check-circle-fill"/>
+                                    </svg>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Коучинговый подход</td>
+                                <td class="text-center">
+                                    <svg class="bi text-success" width="20" height="20" fill="currentColor">
+                                        <use xlink:href="#check-circle-fill"/>
+                                    </svg>
+                                </td>
+                                <td class="text-center">
+                                    <svg class="bi text-success" width="20" height="20" fill="currentColor">
+                                        <use xlink:href="#check-circle-fill"/>
+                                    </svg>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ Section -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Частые вопросы</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="faqAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                Что такое сессия?
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Сессия - это полный цикл работы с картой: от выбора запроса до получения инсайтов и рефлексии. С бесплатной подпиской вы можете пройти одну сессию в день, с премиум - три.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                Чем отличаются карты День и Ночь?
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Карты День и Ночь - это две разные колоды с уникальными изображениями. Выбор зависит от вашего настроения и типа запроса. В бесплатной версии доступны первые 10 карт каждой колоды.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                Можно ли отменить подписку?
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Подписка оформляется на выбранный период (месяц или год) и не продлевается автоматически. После истечения срока подписки вы вернетесь к бесплатному тарифу.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                Какая разница между годовой и месячной подпиской?
+                            </button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                Годовая подписка дает скидку 17% (3000₽ вместо 3600₽). Это выгоднее, если вы планируете регулярно использовать бота.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center text-muted small">
+            <p>Безопасная оплата через Prodamus</p>
+            <p>После оплаты подписка активируется автоматически</p>
+        </div>
+    </div>
+
+    <!-- Bootstrap Icons -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+        <symbol id="check-circle-fill" viewBox="0 0 16 16">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+        </symbol>
+        <symbol id="x-circle-fill" viewBox="0 0 16 16">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
+        </symbol>
+    </svg>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JS -->
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,225 @@
+/* Telegram WebApp Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--tg-theme-bg-color, #ffffff);
+    color: var(--tg-theme-text-color, #000000);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 800px;
+}
+
+/* Header */
+h1 {
+    font-weight: 700;
+    font-size: 1.75rem;
+}
+
+#user-greeting {
+    font-size: 1rem;
+}
+
+/* Cards */
+.card {
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+.border-primary {
+    border: 2px solid var(--tg-theme-button-color, #0088cc) !important;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 12px;
+    font-weight: 600;
+    padding: 12px 24px;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--tg-theme-button-color, #0088cc);
+    border-color: var(--tg-theme-button-color, #0088cc);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.btn-primary:hover {
+    background-color: var(--tg-theme-button-color, #0088cc);
+    border-color: var(--tg-theme-button-color, #0088cc);
+    opacity: 0.9;
+    transform: scale(1.02);
+}
+
+.btn-outline-primary {
+    border-color: var(--tg-theme-button-color, #0088cc);
+    color: var(--tg-theme-button-color, #0088cc);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--tg-theme-button-color, #0088cc);
+    border-color: var(--tg-theme-button-color, #0088cc);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+/* Badges */
+.badge {
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+
+.bg-primary {
+    background-color: var(--tg-theme-button-color, #0088cc) !important;
+}
+
+.bg-success {
+    background-color: #28a745 !important;
+}
+
+/* Text colors */
+.text-primary {
+    color: var(--tg-theme-button-color, #0088cc) !important;
+}
+
+.text-muted {
+    color: var(--tg-theme-hint-color, #999999) !important;
+}
+
+/* List styling */
+.list-unstyled li {
+    display: flex;
+    align-items: center;
+}
+
+/* Table */
+.table {
+    color: var(--tg-theme-text-color, #000000);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.table-light {
+    background-color: rgba(0, 0, 0, 0.03);
+    color: var(--tg-theme-text-color, #000000);
+}
+
+/* Accordion */
+.accordion-button {
+    background-color: transparent;
+    color: var(--tg-theme-text-color, #000000);
+    font-weight: 600;
+    padding: 16px 20px;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: rgba(0, 136, 204, 0.08);
+    color: var(--tg-theme-button-color, #0088cc);
+    box-shadow: none;
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: rgba(0, 0, 0, 0.125);
+}
+
+.accordion-button::after {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%230088cc'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-item {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    margin-bottom: 8px;
+}
+
+.accordion-body {
+    padding: 16px 20px;
+    color: var(--tg-theme-text-color, #000000);
+}
+
+/* Card header */
+.card-header {
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.bg-light {
+    background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Icons */
+.bi {
+    vertical-align: -0.125em;
+}
+
+/* Display */
+.display-6 {
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    .display-6 {
+        font-size: 2rem;
+    }
+
+    .btn-lg {
+        padding: 10px 20px;
+        font-size: 1rem;
+    }
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.card:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.card:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+/* Loading state */
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Safe area for mobile devices */
+@supports (padding: max(0px)) {
+    body {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+    }
+}
