@@ -172,11 +172,7 @@ class MacBot:
         self.dp.message.register(self.send_all_handler, Command("send_all"))
         self.dp.message.register(self.stats_handler, Command("stats"))
         self.dp.message.register(self.subscribe_handler, Command("subscribe"))
-
-        # WebApp data handler
-        self.dp.message.register(
-            self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA
-        )
+        self.dp.message.register(self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA)
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
         self.dp.message.register(
@@ -232,8 +228,12 @@ class MacBot:
 
         if not can_start and not is_staff:
             # Получаем информацию о подписке для сообщения
+            from asgiref.sync import sync_to_async
+
             profile = await self.db.get_user(message.from_user.id)
-            session_limit = profile.get_daily_session_limit() if profile else 1
+            session_limit = (
+                await sync_to_async(profile.get_daily_session_limit)() if profile else 1
+            )
 
             self.logger.info(
                 f"Session limit reached for {message.from_user.full_name} "
@@ -241,17 +241,20 @@ class MacBot:
             )
 
             # Сообщение зависит от типа подписки
-            if (
-                profile
-                and profile.current_subscription
-                and profile.current_subscription.code == "free"
-            ):
+            current_sub = (
+                await sync_to_async(lambda: profile.current_subscription)() if profile else None
+            )
+            sub_code = (
+                await sync_to_async(lambda: current_sub.code)() if current_sub else None
+            )
+
+            if profile and current_sub and sub_code == "free":
                 msg = (
                     f"⏳ Вы использовали дневной лимит ({session_limit} сессия).\n\n"
                     f"✨ Хотите больше сессий в день?\n"
                     f"Оформите премиум подписку:\n"
                     f"• 3 сессии в день\n"
-                    f"• Все 81 карта\n\n"
+                    f"• Все карты (полная колода)\n\n"
                     f"Используйте команду /subscribe для оформления подписки."
                 )
             else:
@@ -604,37 +607,40 @@ class MacBot:
                 return
 
             # Проверяем текущую подписку
-            current_sub = profile.current_subscription
-            is_premium = current_sub and current_sub.code != "free"
+            from asgiref.sync import sync_to_async
 
-            if is_premium and profile.subscription_expires_at:
-                # Пользователь уже premium
-                expires_date = profile.subscription_expires_at.strftime("%d.%m.%Y")
-                msg = f"""✨ <b>Ваша подписка</b>
+            current_sub = await sync_to_async(lambda: profile.current_subscription)()
+            sub_code = await sync_to_async(lambda: current_sub.code if current_sub else None)()
+            is_premium = current_sub and sub_code != "free"
 
-📋 Тариф: <b>{current_sub.name}</b>
-💰 Стоимость: {current_sub.price}₽
+            if is_premium:
+                expires_at = await sync_to_async(lambda: profile.subscription_expires_at)()
+                if expires_at:
+                    # Пользователь уже premium
+                    expires_date = expires_at.strftime("%d.%m.%Y")
+                    sub_name = await sync_to_async(lambda: current_sub.name)()
+                    sub_price = await sync_to_async(lambda: current_sub.price)()
+                    daily_limit = await sync_to_async(lambda: current_sub.daily_sessions_limit)()
+                    cards_limit = await sync_to_async(lambda: current_sub.cards_limit)()
+                    cards_text = "Все 81 карта" if cards_limit is None else f"{cards_limit} карт"
+
+                    msg = f"""✨ <b>Ваша подписка</b>
+
+📋 Тариф: <b>{sub_name}</b>
+💰 Стоимость: {sub_price}₽
 📅 Действует до: <b>{expires_date}</b>
 
 ⚡️ Доступные возможности:
-• {current_sub.daily_sessions_limit} сессии в день
-• {current_sub.cards_limit} карт (полная колода)
+• {daily_limit} сессии в день
+• {cards_text} (полная колода)
 
 Для продления подписки выберите тариф ниже."""
-            else:
+                else:
+                    is_premium = False
+
+            if not is_premium:
                 # Free пользователь
-                msg = """💳 <b>Выберите тариф подписки</b>
-
-🆓 <b>Бесплатный тариф</b> (текущий):
-• 1 сессия в день
-• 20 карт (первые 10 из каждой колоды)
-
-✨ <b>Премиум тариф</b>:
-• 3 сессии в день
-• Все 81 карта (полная колода День + Ночь)
-• Без ограничений доступа
-
-Выберите тариф для оформления подписки:"""
+                msg = "Выберите тариф для оформления подписки:"
 
             # Кнопка для открытия WebApp
             webapp_url = f"{settings.BASE_URL}/static/webapp/index.html"

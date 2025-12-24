@@ -43,7 +43,7 @@ def free_subscription(db):
         price=0,
         duration_days=999999,
         daily_sessions_limit=1,
-        cards_limit=20,
+        cards_limit=10,
         is_active=True
     )
 
@@ -57,7 +57,7 @@ def premium_subscription(db):
         price=300,
         duration_days=30,
         daily_sessions_limit=3,
-        cards_limit=81,
+        cards_limit=None,
         is_active=True
     )
 

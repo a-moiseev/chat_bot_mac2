@@ -10,7 +10,7 @@ from bot.models import StateType, TelegramProfile, UserState
 class TestDjangoStorageAddUser:
     """Тесты для DjangoStorage.add_user"""
 
-    async def test_add_new_user(self, storage):
+    async def test_add_new_user(self, storage, free_subscription):
         """Создание нового пользователя"""
         await storage.add_user(
             user_id=123456789,
@@ -23,7 +23,7 @@ class TestDjangoStorageAddUser:
         assert profile.username == "new_user"
         assert profile.first_name == "New User"
 
-    async def test_add_user_with_long_name(self, storage):
+    async def test_add_user_with_long_name(self, storage, free_subscription):
         """Имя обрезается до 30 символов для Django User"""
         long_name = "A" * 50
         await storage.add_user(
@@ -34,7 +34,7 @@ class TestDjangoStorageAddUser:
         django_user = await sync_to_async(DjangoUser.objects.get)(username="tg_111222333")
         assert len(django_user.first_name) == 30
 
-    async def test_add_user_without_username(self, storage):
+    async def test_add_user_without_username(self, storage, free_subscription):
         """username=None обрабатывается корректно"""
         await storage.add_user(
             user_id=444555666,
@@ -155,7 +155,7 @@ class TestDjangoStorageGetStatistics:
         assert stats["recent_users"] == 0
         assert stats["completed_sessions"] == 0
 
-    async def test_statistics_total_users(self, storage):
+    async def test_statistics_total_users(self, storage, free_subscription):
         """Подсчет total_users"""
         for i in range(3):
             await storage.add_user(
