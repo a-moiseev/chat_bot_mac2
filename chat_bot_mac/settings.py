@@ -12,29 +12,36 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from .env file
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-qt8l)8qrtb(d!cck_br+wwqz&(+1n!p)_0=z7*4x5m-1b!m!t%")
+SECRET_KEY = os.getenv(
+    "SECRET_KEY", "django-insecure-qt8l)8qrtb(d!cck_br+wwqz&(+1n!p)_0=z7*4x5m-1b!m!t%"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else []
+ALLOWED_HOSTS = (
+    os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else []
+)
 
-CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host and host != "localhost"]
+CSRF_TRUSTED_ORIGINS = [
+    f"https://{host}" for host in ALLOWED_HOSTS if host and host != "localhost"
+]
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Application definition
 
@@ -124,12 +131,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Media files (User uploaded content)
-MEDIA_ROOT = BASE_DIR / 'media'
-MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -137,54 +144,58 @@ MEDIA_URL = '/media/'
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Telegram Bot Settings
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-MASTER_NAME = os.getenv('MASTER_NAME', 'eremenko_natali')
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+MASTER_NAME = os.getenv("MASTER_NAME", "eremenko_natali")
 
 # Redis Settings (optional)
-REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
-REDIS_DB = int(os.getenv('REDIS_DB', '0'))
-REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', None)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 # Prodamus Payment System Settings
-PRODAMUS_MERCHANT_URL = os.getenv('PRODAMUS_MERCHANT_URL', 'https://demo.payform.ru/')
-PRODAMUS_SECRET_KEY = os.getenv('PRODAMUS_SECRET_KEY', '')
-PRODAMUS_TEST_MODE = os.getenv('PRODAMUS_TEST_MODE', 'True').lower() == 'true'
+PRODAMUS_MERCHANT_URL = os.getenv("PRODAMUS_MERCHANT_URL", "https://demo.payform.ru/")
+PRODAMUS_SECRET_KEY = os.getenv("PRODAMUS_SECRET_KEY", "")
+PRODAMUS_TEST_MODE = os.getenv("PRODAMUS_TEST_MODE", "True").lower() == "true"
 
 # Prodamus Callback URLs
-BASE_URL = os.getenv('BASE_URL', 'http://localhost:8000')
-PRODAMUS_WEBHOOK_URL = os.getenv('PRODAMUS_WEBHOOK_URL', f'{BASE_URL}/api/prodamus/webhook')
-PRODAMUS_SUCCESS_URL = os.getenv('PRODAMUS_SUCCESS_URL', f'{BASE_URL}/api/prodamus/success')
-PRODAMUS_RETURN_URL = os.getenv('PRODAMUS_RETURN_URL', 'https://t.me/your_bot_username')
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+PRODAMUS_WEBHOOK_URL = os.getenv(
+    "PRODAMUS_WEBHOOK_URL", f"{BASE_URL}/api/prodamus/webhook"
+)
+PRODAMUS_SUCCESS_URL = os.getenv(
+    "PRODAMUS_SUCCESS_URL", f"{BASE_URL}/api/prodamus/success"
+)
+PRODAMUS_RETURN_URL = os.getenv("PRODAMUS_RETURN_URL", "")
 
 # Logging
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{asctime} - {levelname} - {message}',
-            'style': '{',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} - {levelname} - {message}",
+            "style": "{",
         },
     },
-    'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'bot_usage.log',
-            'formatter': 'verbose',
+    "handlers": {
+        "file": {
+            "level": "INFO",
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "bot_usage.log",
+            "formatter": "verbose",
         },
-        'console': {
-            'level': 'INFO',
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
         },
     },
-    'loggers': {
-        'mac_bot': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': False,
+    "loggers": {
+        "mac_bot": {
+            "handlers": ["file", "console"],
+            "level": "INFO",
+            "propagate": False,
         },
     },
 }
