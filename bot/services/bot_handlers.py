@@ -460,7 +460,8 @@ class MacBot:
             "whats_happening",
             "like_this",
         ]:
-            await message.answer(data[key])
+            if data.get(key):
+                await message.answer(data[key])
         await message.answer(
             self.messages["messages_work"][21], reply_markup=ReplyKeyboardRemove()
         )
