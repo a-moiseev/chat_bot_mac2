@@ -210,3 +210,7 @@ __marimo__/
 media/images/day/
 media/images/night/
 config/messages.yaml
+
+# Legal documents (private data)
+static/oferta.html
+static/privacy.html
