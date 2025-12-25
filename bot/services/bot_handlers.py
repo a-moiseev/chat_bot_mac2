@@ -172,6 +172,8 @@ class MacBot:
         self.dp.message.register(self.send_all_handler, Command("send_all"))
         self.dp.message.register(self.stats_handler, Command("stats"))
         self.dp.message.register(self.subscribe_handler, Command("subscribe"))
+        self.dp.message.register(self.oferta_handler, Command("oferta"))
+        self.dp.message.register(self.privacy_handler, Command("privacy"))
         self.dp.message.register(self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA)
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
@@ -712,6 +714,50 @@ class MacBot:
             await message.answer(
                 "❌ Произошла ошибка при создании заказа. Попробуйте позже."
             )
+
+    async def oferta_handler(self, message: Message) -> None:
+        """Обработчик команды /oferta - открывает публичную оферту"""
+        try:
+            base_url = settings.BASE_URL or "https://mac.eremenko.live"
+            oferta_url = f"{base_url}/static/oferta.html"
+
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📄 Открыть оферту", web_app=WebAppInfo(url=oferta_url)
+                        )
+                    ]
+                ]
+            )
+
+            await message.answer("📋 <b>Публичная оферта</b>", reply_markup=keyboard)
+
+        except Exception as e:
+            self.logger.error(f"Error in oferta_handler: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def privacy_handler(self, message: Message) -> None:
+        """Обработчик команды /privacy - открывает политику конфиденциальности"""
+        try:
+            base_url = settings.BASE_URL or "https://mac.eremenko.live"
+            privacy_url = f"{base_url}/static/privacy.html"
+
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🔒 Открыть политику", web_app=WebAppInfo(url=privacy_url)
+                        )
+                    ]
+                ]
+            )
+
+            await message.answer("🔒 <b>Политика конфиденциальности</b>", reply_markup=keyboard)
+
+        except Exception as e:
+            self.logger.error(f"Error in privacy_handler: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def start(self) -> None:
         """Запуск бота"""
