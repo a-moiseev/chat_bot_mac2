@@ -229,10 +229,10 @@ Existing Redis data from old bot version is preserved.
 
 ### Common Commands
 ```bash
-docker-compose build
-docker-compose up -d
-docker-compose logs -f bot
-docker-compose restart django bot
+docker compose build
+docker compose up -d
+docker compose logs -f bot
+docker compose restart django bot
 ```
 
 ### Deployment Process

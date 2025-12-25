@@ -25,9 +25,6 @@ services:
       - DEBUG=${DEBUG:-False}
       - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - MASTER_NAME=${MASTER_NAME}
-      - USE_REDIS=False
       - PRODAMUS_MERCHANT_URL=${PRODAMUS_MERCHANT_URL}
       - PRODAMUS_SECRET_KEY=${PRODAMUS_SECRET_KEY}
       - PRODAMUS_TEST_MODE=${PRODAMUS_TEST_MODE:-False}
@@ -44,6 +41,7 @@ services:
       - ./config:/app/config:ro
     environment:
       - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - MASTER_NAME=${MASTER_NAME}
       - USE_REDIS=${USE_REDIS:-True}
@@ -51,4 +49,8 @@ services:
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - PRODAMUS_MERCHANT_URL=${PRODAMUS_MERCHANT_URL}
+      - PRODAMUS_SECRET_KEY=${PRODAMUS_SECRET_KEY}
+      - PRODAMUS_TEST_MODE=${PRODAMUS_TEST_MODE:-False}
+      - BASE_URL=${BASE_URL}
     restart: always
