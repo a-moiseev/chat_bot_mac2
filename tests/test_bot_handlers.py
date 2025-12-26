@@ -51,6 +51,10 @@ class TestProcessResult2Handler:
             "bot.services.bot_handlers.MacBot._load_config"
         ) as mock_config, patch(
             "bot.services.bot_handlers.MacBot.log_state_change", new_callable=AsyncMock
+        ), patch(
+            "bot.services.bot_handlers.Bot"
+        ), patch(
+            "bot.services.bot_handlers.Dispatcher"
         ):
             mock_config.return_value = {
                 "messages_work": [""] * 30  # Заполняем пустыми строками
@@ -83,6 +87,10 @@ class TestProcessResult2Handler:
             "bot.services.bot_handlers.MacBot._load_config"
         ) as mock_config, patch(
             "bot.services.bot_handlers.MacBot.log_state_change", new_callable=AsyncMock
+        ), patch(
+            "bot.services.bot_handlers.Bot"
+        ), patch(
+            "bot.services.bot_handlers.Dispatcher"
         ):
             mock_config.return_value = {"messages_work": [""] * 30}
             bot = MacBot()
@@ -113,6 +121,10 @@ class TestProcessResult2Handler:
             "bot.services.bot_handlers.MacBot._load_config"
         ) as mock_config, patch(
             "bot.services.bot_handlers.MacBot.log_state_change", new_callable=AsyncMock
+        ), patch(
+            "bot.services.bot_handlers.Bot"
+        ), patch(
+            "bot.services.bot_handlers.Dispatcher"
         ):
             mock_config.return_value = {"messages_work": [""] * 30}
             bot = MacBot()
@@ -138,6 +150,10 @@ class TestProcessResult2Handler:
             "bot.services.bot_handlers.MacBot._load_config"
         ) as mock_config, patch(
             "bot.services.bot_handlers.MacBot.log_state_change", new_callable=AsyncMock
+        ), patch(
+            "bot.services.bot_handlers.Bot"
+        ), patch(
+            "bot.services.bot_handlers.Dispatcher"
         ):
             mock_config.return_value = {"messages_work": [""] * 30}
             bot = MacBot()
