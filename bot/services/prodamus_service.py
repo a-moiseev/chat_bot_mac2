@@ -1,12 +1,10 @@
-import hashlib
-import hmac
-import json
 import logging
 import uuid
 from typing import Dict, Optional
 from urllib.parse import urlencode
 
 from django.conf import settings
+from prodamuspy import ProdamusPy
 
 from bot.models import Subscription
 
@@ -26,10 +24,13 @@ class ProdamusService:
 
         # Для демо-платежей добавляем суффикс "demo" к ключу
         if self.test_mode:
-            self.secret_key = settings.PRODAMUS_SECRET_KEY + "demo"
+            secret_key = settings.PRODAMUS_SECRET_KEY + "demo"
             logger.info("[PRODAMUS] Using demo secret key (with 'demo' suffix)")
         else:
-            self.secret_key = settings.PRODAMUS_SECRET_KEY
+            secret_key = settings.PRODAMUS_SECRET_KEY
+
+        # Создаем экземпляр ProdamusPy для подписания
+        self.prodamus_py = ProdamusPy(secret=secret_key)
 
     def generate_order_id(self, user_id: int, plan_code: str) -> str:
         """Генерация уникального ID заказа
@@ -55,26 +56,7 @@ class ProdamusService:
         Returns:
             HMAC SHA256 подпись в hex формате
         """
-        # Сортируем параметры по ключам (alphabetically)
-        sorted_data = dict(sorted(data.items()))
-
-        # Формат Prodamus: преобразуем в JSON строку
-        # Используем separators для компактного формата без пробелов
-        json_string = json.dumps(
-            sorted_data, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-        )
-
-        logger.info(f"[SIGNATURE] JSON to sign (first 200 chars): {json_string[:200]}")
-        logger.info(f"[SIGNATURE] Secret key length: {len(self.secret_key)} chars")
-        logger.info(f"[SIGNATURE] Secret key first 10 chars: {self.secret_key[:10]}...")
-
-        # Генерируем HMAC SHA256 от JSON строки
-        signature = hmac.new(
-            bytes(self.secret_key, "utf-8"),
-            msg=bytes(json_string, "utf-8"),
-            digestmod=hashlib.sha256,
-        ).hexdigest()
-
+        signature = self.prodamus_py.sign(data)
         logger.info(f"[SIGNATURE] Generated signature: {signature}")
         return signature
 
@@ -91,15 +73,12 @@ class ProdamusService:
         # Убираем signature из данных перед проверкой
         data_copy = {k: v for k, v in data.items() if k != "signature"}
 
-        # Генерируем ожидаемую подпись
-        expected_signature = self.generate_signature(data_copy)
-
-        # Сравниваем в безопасном режиме (защита от timing attacks)
-        is_valid = hmac.compare_digest(expected_signature, received_signature)
+        # Проверяем подпись через ProdamusPy
+        is_valid = self.prodamus_py.verify(data_copy, received_signature)
 
         if not is_valid:
             logger.warning(
-                f"Invalid webhook signature. Expected: {expected_signature[:10]}..., Got: {received_signature[:10]}..."
+                f"Invalid webhook signature. Got: {received_signature[:10]}..."
             )
 
         return is_valid
