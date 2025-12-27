@@ -232,8 +232,8 @@ class TestCreatePaymentLink:
 
         assert "do=test" in url
 
-    def test_create_payment_link_contains_callbacks(self, premium_subscription):
-        """Проверка наличия callback URLs в ссылке"""
+    def test_create_payment_link_contains_required_fields(self, premium_subscription):
+        """Проверка наличия обязательных полей в ссылке"""
         service = ProdamusService()
         order_id = "ORDER_123_monthly_abc"
 
@@ -241,9 +241,11 @@ class TestCreatePaymentLink:
             order_id=order_id, subscription_plan=premium_subscription, user_id=12345
         )
 
-        assert "urlNotification" in url
-        assert "urlSuccess" in url
-        # urlReturn добавляется только если задан в settings (не проверяем)
+        # Проверяем обязательные поля
+        assert "order_id=" in url
+        assert "customer_extra=" in url
+        assert "sys=" in url
+        assert "signature=" in url
 
 
 @pytest.mark.django_db

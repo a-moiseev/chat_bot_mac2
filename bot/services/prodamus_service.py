@@ -127,8 +127,7 @@ class ProdamusService:
             "do": "link",  # Тип операции
             "order_id": order_id,
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
-            "urlNotification": settings.PRODAMUS_WEBHOOK_URL,
-            "urlSuccess": settings.PRODAMUS_SUCCESS_URL,
+            "urlSuccess": settings.PRODAMUS_SUCCESS_URL,  # Редирект после успешной оплаты
             "sys": "mac_bot",  # Идентификатор системы
         }
 
@@ -152,10 +151,6 @@ class ProdamusService:
             logger.warning(
                 f"[PRODAMUS] No Prodamus subscription ID for plan {subscription_plan.code}, using products"
             )
-
-        # Добавляем urlReturn только если он не пустой
-        if settings.PRODAMUS_RETURN_URL:
-            payment_data["urlReturn"] = settings.PRODAMUS_RETURN_URL
 
         # Добавляем опциональные параметры
         if username:
