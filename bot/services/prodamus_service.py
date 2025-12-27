@@ -60,19 +60,19 @@ class ProdamusService:
 
         # Формат Prodamus: преобразуем в JSON строку
         # Используем separators для компактного формата без пробелов
-        json_string = json.dumps(sorted_data, ensure_ascii=False, separators=(',', ':'))
-
-        logger.info(
-            f"[SIGNATURE] JSON to sign (first 200 chars): {json_string[:200]}"
+        json_string = json.dumps(
+            sorted_data, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         )
+
+        logger.info(f"[SIGNATURE] JSON to sign (first 200 chars): {json_string[:200]}")
         logger.info(f"[SIGNATURE] Secret key length: {len(self.secret_key)} chars")
         logger.info(f"[SIGNATURE] Secret key first 10 chars: {self.secret_key[:10]}...")
 
         # Генерируем HMAC SHA256 от JSON строки
         signature = hmac.new(
-            self.secret_key.encode("utf-8"),
-            json_string.encode("utf-8"),
-            hashlib.sha256,
+            bytes(self.secret_key, "utf-8"),
+            msg=bytes(json_string, "utf-8"),
+            digestmod=hashlib.sha256,
         ).hexdigest()
 
         logger.info(f"[SIGNATURE] Generated signature: {signature}")
