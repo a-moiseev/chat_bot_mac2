@@ -601,8 +601,11 @@ class MacBot:
         user_id = message.from_user.id
         username = message.from_user.username or "Unknown"
 
+        self.logger.info(f"[SUBSCRIBE] User {user_id} (@{username}) called /subscribe command")
+
         try:
             # Получаем профиль пользователя
+            self.logger.info(f"[SUBSCRIBE] Getting user profile for {user_id}")
             profile = await self.db.get_user(user_id)
 
             if not profile:
@@ -647,6 +650,9 @@ class MacBot:
 
             # Кнопка для открытия WebApp
             webapp_url = f"{settings.BASE_URL}/static/webapp/index.html"
+            self.logger.info(f"[SUBSCRIBE] WebApp URL: {webapp_url}")
+            self.logger.info(f"[SUBSCRIBE] BASE_URL from settings: {settings.BASE_URL}")
+
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -657,7 +663,9 @@ class MacBot:
                 ]
             )
 
+            self.logger.info(f"[SUBSCRIBE] Sending keyboard with WebApp button to user {user_id}")
             await message.answer(msg, reply_markup=keyboard)
+            self.logger.info(f"[SUBSCRIBE] Successfully sent subscription info to user {user_id}")
 
         except Exception as e:
             self.logger.error(f"Ошибка в subscribe_handler: {e}")
