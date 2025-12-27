@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import logging
 import uuid
 from typing import Dict, Optional
@@ -48,22 +49,23 @@ class ProdamusService:
         Returns:
             HMAC SHA256 подпись в hex формате
         """
-        # Сортируем параметры по ключам
-        sorted_params = sorted(data.items())
+        # Сортируем параметры по ключам (alphabetically)
+        sorted_data = dict(sorted(data.items()))
 
-        # Формат Prodamus: склеиваем только ЗНАЧЕНИЯ через точку с запятой
-        string_to_sign = ";".join([str(v) for k, v in sorted_params])
+        # Формат Prodamus: преобразуем в JSON строку
+        # Используем separators для компактного формата без пробелов
+        json_string = json.dumps(sorted_data, ensure_ascii=False, separators=(',', ':'))
 
         logger.info(
-            f"[SIGNATURE] String to sign (first 200 chars): {string_to_sign[:200]}"
+            f"[SIGNATURE] JSON to sign (first 200 chars): {json_string[:200]}"
         )
         logger.info(f"[SIGNATURE] Secret key length: {len(self.secret_key)} chars")
         logger.info(f"[SIGNATURE] Secret key first 10 chars: {self.secret_key[:10]}...")
 
-        # Генерируем HMAC SHA256
+        # Генерируем HMAC SHA256 от JSON строки
         signature = hmac.new(
             self.secret_key.encode("utf-8"),
-            string_to_sign.encode("utf-8"),
+            json_string.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
 
@@ -139,9 +141,6 @@ class ProdamusService:
         payment_data = {
             "do": "link",  # Тип операции
             "order_id": order_id,
-            "products[0][name]": subscription_plan.name,
-            "products[0][price]": str(subscription_plan.price),
-            "products[0][quantity]": "1",
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
             "urlNotification": settings.PRODAMUS_WEBHOOK_URL,
             "urlSuccess": settings.PRODAMUS_SUCCESS_URL,
@@ -150,6 +149,7 @@ class ProdamusService:
 
         # Добавляем ID подписки Prodamus для рекуррентных платежей
         if subscription_plan.prodamus_subscription_id:
+            # Для подписки НЕ добавляем products, только subscription ID
             payment_data["subscription"] = str(
                 subscription_plan.prodamus_subscription_id
             )
@@ -157,8 +157,12 @@ class ProdamusService:
                 f"[PRODAMUS] Using Prodamus subscription ID: {subscription_plan.prodamus_subscription_id}"
             )
         else:
+            # Для разовой оплаты (если нет subscription_id) добавляем products
+            payment_data["products[0][name]"] = subscription_plan.name
+            payment_data["products[0][price]"] = str(subscription_plan.price)
+            payment_data["products[0][quantity]"] = "1"
             logger.warning(
-                f"[PRODAMUS] No Prodamus subscription ID for plan {subscription_plan.code}"
+                f"[PRODAMUS] No Prodamus subscription ID for plan {subscription_plan.code}, using products"
             )
 
         # Добавляем urlReturn только если он не пустой
