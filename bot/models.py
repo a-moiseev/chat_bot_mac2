@@ -1,29 +1,34 @@
-from django.db import models
-from django.contrib.auth.models import User
-from django.utils import timezone
 from datetime import timedelta
+
+from django.contrib.auth.models import User
+from django.db import models
+from django.utils import timezone
 
 
 class Subscription(models.Model):
     """Тарифные планы подписки"""
 
-    name = models.CharField(max_length=100, verbose_name='Название тарифа')
-    code = models.CharField(max_length=50, unique=True, verbose_name='Код тарифа')
-    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Цена (₽)')
-    duration_days = models.IntegerField(verbose_name='Продолжительность (дни)')
-    daily_sessions_limit = models.IntegerField(verbose_name='Лимит сессий в день')
-    cards_limit = models.IntegerField(verbose_name='Количество доступных карт', null=True, blank=True)
-    is_active = models.BooleanField(default=True, verbose_name='Активен')
-    description = models.TextField(blank=True, verbose_name='Описание')
+    name = models.CharField(max_length=200, verbose_name="Название тарифа")
+    code = models.CharField(max_length=50, unique=True, verbose_name="Код тарифа")
+    price = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name="Цена (₽)"
+    )
+    duration_days = models.IntegerField(verbose_name="Продолжительность (дни)")
+    daily_sessions_limit = models.IntegerField(verbose_name="Лимит сессий в день")
+    cards_limit = models.IntegerField(
+        verbose_name="Количество доступных карт", null=True, blank=True
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    description = models.TextField(blank=True, verbose_name="Описание")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'subscriptions'
-        verbose_name = 'Тариф подписки'
-        verbose_name_plural = 'Тарифы подписок'
-        ordering = ['price']
+        db_table = "subscriptions"
+        verbose_name = "Тариф подписки"
+        verbose_name_plural = "Тарифы подписок"
+        ordering = ["price"]
 
     def __str__(self):
         return f"{self.name} ({self.price}₽)"
@@ -31,26 +36,26 @@ class Subscription(models.Model):
 
 class TelegramProfile(models.Model):
     user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='telegram_profile'
+        User, on_delete=models.CASCADE, related_name="telegram_profile"
     )
     telegram_id = models.BigIntegerField(unique=True)
     username = models.CharField(max_length=255, blank=True, null=True)
     first_name = models.CharField(max_length=255, blank=True)
     last_name = models.CharField(max_length=255, blank=True)
-    language_code = models.CharField(max_length=10, default='ru')
+    language_code = models.CharField(max_length=10, default="ru")
 
     # Подписка
     current_subscription = models.ForeignKey(
         Subscription,
         on_delete=models.PROTECT,
-        related_name='users',
+        related_name="users",
         null=True,
         blank=True,
-        verbose_name='Текущая подписка'
+        verbose_name="Текущая подписка",
     )
-    subscription_expires_at = models.DateTimeField(null=True, blank=True, verbose_name='Подписка до')
+    subscription_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Подписка до"
+    )
 
     # Метаданные
     created_at = models.DateTimeField(auto_now_add=True)
@@ -59,9 +64,9 @@ class TelegramProfile(models.Model):
     is_blocked = models.BooleanField(default=False)
 
     class Meta:
-        db_table = 'telegram_profiles'
-        verbose_name = 'Telegram профиль'
-        verbose_name_plural = 'Telegram профили'
+        db_table = "telegram_profiles"
+        verbose_name = "Telegram профиль"
+        verbose_name_plural = "Telegram профили"
 
     def __str__(self):
         return f"{self.telegram_id} - {self.user.username}"
@@ -72,7 +77,7 @@ class TelegramProfile(models.Model):
         if not self.current_subscription:
             return False
         # Free тариф всегда активен
-        if self.current_subscription.code == 'free':
+        if self.current_subscription.code == "free":
             return True
         # Платные тарифы - проверяем дату истечения
         if self.subscription_expires_at:
@@ -102,8 +107,10 @@ class TelegramProfile(models.Model):
         """Активировать подписку на указанный план"""
         self.current_subscription = subscription_plan
         # Для free тарифа дата истечения не нужна
-        if subscription_plan.code != 'free':
-            self.subscription_expires_at = timezone.now() + timedelta(days=subscription_plan.duration_days)
+        if subscription_plan.code != "free":
+            self.subscription_expires_at = timezone.now() + timedelta(
+                days=subscription_plan.duration_days
+            )
         else:
             self.subscription_expires_at = None
         self.save()
@@ -127,14 +134,10 @@ class StateType(models.Model):
 class UserState(models.Model):
     id = models.AutoField(primary_key=True)
     telegram_profile = models.ForeignKey(
-        TelegramProfile,
-        on_delete=models.CASCADE,
-        related_name="states"
+        TelegramProfile, on_delete=models.CASCADE, related_name="states"
     )
     state_type = models.ForeignKey(
-        StateType,
-        on_delete=models.PROTECT,
-        related_name="user_states"
+        StateType, on_delete=models.PROTECT, related_name="user_states"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -143,7 +146,10 @@ class UserState(models.Model):
         verbose_name = "User State"
         verbose_name_plural = "User States"
         indexes = [
-            models.Index(fields=["telegram_profile", "state_type"], name="ix_user_states_profile_type"),
+            models.Index(
+                fields=["telegram_profile", "state_type"],
+                name="ix_user_states_profile_type",
+            ),
             models.Index(fields=["created_at"], name="ix_user_states_created"),
         ]
 
@@ -155,58 +161,72 @@ class Payment(models.Model):
     """Платежные транзакции Prodamus"""
 
     PAYMENT_STATUS = [
-        ('pending', 'Ожидает оплаты'),
-        ('success', 'Успешно оплачено'),
-        ('failed', 'Ошибка оплаты'),
-        ('cancelled', 'Отменено'),
-        ('refunded', 'Возвращено'),
+        ("pending", "Ожидает оплаты"),
+        ("success", "Успешно оплачено"),
+        ("failed", "Ошибка оплаты"),
+        ("cancelled", "Отменено"),
+        ("refunded", "Возвращено"),
     ]
 
     telegram_profile = models.ForeignKey(
         TelegramProfile,
         on_delete=models.CASCADE,
-        related_name='payments',
-        verbose_name='Telegram профиль'
+        related_name="payments",
+        verbose_name="Telegram профиль",
     )
     subscription_plan = models.ForeignKey(
         Subscription,
         on_delete=models.PROTECT,
-        related_name='payments',
-        verbose_name='Тарифный план',
+        related_name="payments",
+        verbose_name="Тарифный план",
         null=True,
-        blank=True
+        blank=True,
     )
 
     # Данные Prodamus
-    order_id = models.CharField(max_length=255, unique=True, verbose_name='ID заказа')
-    payment_id = models.CharField(max_length=255, blank=True, null=True, verbose_name='ID платежа')
-    subscription_id = models.CharField(max_length=255, blank=True, null=True, verbose_name='ID подписки Prodamus')
+    order_id = models.CharField(max_length=255, unique=True, verbose_name="ID заказа")
+    payment_id = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name="ID платежа"
+    )
+    subscription_id = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name="ID подписки Prodamus"
+    )
 
     # Детали платежа
-    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Сумма')
-    currency = models.CharField(max_length=3, default='RUB', verbose_name='Валюта')
-    status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='pending', verbose_name='Статус')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
+    currency = models.CharField(max_length=3, default="RUB", verbose_name="Валюта")
+    status = models.CharField(
+        max_length=20, choices=PAYMENT_STATUS, default="pending", verbose_name="Статус"
+    )
 
     # Данные клиента
-    customer_email = models.EmailField(blank=True, null=True, verbose_name='Email клиента')
-    customer_phone = models.CharField(max_length=50, blank=True, null=True, verbose_name='Телефон клиента')
+    customer_email = models.EmailField(
+        blank=True, null=True, verbose_name="Email клиента"
+    )
+    customer_phone = models.CharField(
+        max_length=50, blank=True, null=True, verbose_name="Телефон клиента"
+    )
 
     # Метаданные
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
-    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
-    paid_at = models.DateTimeField(null=True, blank=True, verbose_name='Оплачено')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Оплачено")
 
     # Сырые данные webhook для отладки
-    webhook_data = models.JSONField(null=True, blank=True, verbose_name='Данные webhook')
+    webhook_data = models.JSONField(
+        null=True, blank=True, verbose_name="Данные webhook"
+    )
 
     class Meta:
-        db_table = 'payments'
-        verbose_name = 'Платеж'
-        verbose_name_plural = 'Платежи'
-        ordering = ['-created_at']
+        db_table = "payments"
+        verbose_name = "Платеж"
+        verbose_name_plural = "Платежи"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['order_id'], name='ix_payments_order_id'),
-            models.Index(fields=['telegram_profile', 'status'], name='ix_payments_profile_status'),
+            models.Index(fields=["order_id"], name="ix_payments_order_id"),
+            models.Index(
+                fields=["telegram_profile", "status"], name="ix_payments_profile_status"
+            ),
         ]
 
     def __str__(self):
@@ -219,28 +239,33 @@ class UserSession(models.Model):
     telegram_profile = models.ForeignKey(
         TelegramProfile,
         on_delete=models.CASCADE,
-        related_name='sessions',
-        verbose_name='Telegram профиль'
+        related_name="sessions",
+        verbose_name="Telegram профиль",
     )
 
     # Временные метки
-    started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начало сессии')
-    completed_at = models.DateTimeField(null=True, blank=True, verbose_name='Завершение сессии')
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name="Начало сессии")
+    completed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Завершение сессии"
+    )
 
     # Детали сессии
-    request_text = models.TextField(verbose_name='Текст запроса')
-    request_type = models.CharField(max_length=50, verbose_name='Тип запроса')
-    card_type = models.CharField(max_length=20, verbose_name='Тип карты')
-    card_number = models.IntegerField(verbose_name='Номер карты')
+    request_text = models.TextField(verbose_name="Текст запроса")
+    request_type = models.CharField(max_length=50, verbose_name="Тип запроса")
+    card_type = models.CharField(max_length=20, verbose_name="Тип карты")
+    card_number = models.IntegerField(verbose_name="Номер карты")
 
     class Meta:
-        db_table = 'user_sessions'
-        verbose_name = 'Сессия пользователя'
-        verbose_name_plural = 'Сессии пользователей'
-        ordering = ['-started_at']
+        db_table = "user_sessions"
+        verbose_name = "Сессия пользователя"
+        verbose_name_plural = "Сессии пользователей"
+        ordering = ["-started_at"]
         indexes = [
-            models.Index(fields=['telegram_profile', 'started_at'], name='ix_sessions_profile_start'),
-            models.Index(fields=['started_at'], name='ix_sessions_started'),
+            models.Index(
+                fields=["telegram_profile", "started_at"],
+                name="ix_sessions_profile_start",
+            ),
+            models.Index(fields=["started_at"], name="ix_sessions_started"),
         ]
 
     def __str__(self):
