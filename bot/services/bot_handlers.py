@@ -800,10 +800,10 @@ class MacBot:
                 f"[PLAN] Payment order created: {order_id}, URL: {payment_url[:50]}..."
             )
 
-            # Открываем ссылку на оплату напрямую через callback
-            await callback.answer(url=payment_url)
+            # Убираем "часики" на кнопке
+            await callback.answer()
 
-            # Опционально: обновляем сообщение чтобы показать что заказ создан
+            # Редактируем сообщение - заменяем кнопки выбора тарифа на кнопку оплаты
             plan_names = {
                 "monthly": "Месячная (300₽)",
                 "yearly": "Годовая (3000₽)",
@@ -811,8 +811,8 @@ class MacBot:
             plan_name = plan_names.get(plan_code, plan_code)
 
             await callback.message.edit_text(
-                f"✅ Заказ создан: {plan_name}\n\n"
-                f"Откройте страницу оплаты для завершения.",
+                f"✅ Тариф: {plan_name}\n\n"
+                f"Нажмите кнопку для перехода к оплате:",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
                         [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)]
