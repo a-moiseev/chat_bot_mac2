@@ -54,6 +54,10 @@ class ProdamusService:
         # Формируем строку для подписи: key1;value1;key2;value2
         string_to_sign = ';'.join([f"{k};{v}" for k, v in sorted_params])
 
+        logger.info(f"[SIGNATURE] String to sign (first 200 chars): {string_to_sign[:200]}")
+        logger.info(f"[SIGNATURE] Secret key length: {len(self.secret_key)} chars")
+        logger.info(f"[SIGNATURE] Secret key first 10 chars: {self.secret_key[:10]}...")
+
         # Генерируем HMAC SHA256
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
@@ -61,7 +65,7 @@ class ProdamusService:
             hashlib.sha256
         ).hexdigest()
 
-        logger.debug(f"Generated signature for data: {list(data.keys())}")
+        logger.info(f"[SIGNATURE] Generated signature: {signature}")
         return signature
 
     def verify_webhook_signature(self, data: Dict, received_signature: str) -> bool:
