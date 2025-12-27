@@ -1,6 +1,9 @@
 import asyncio
+import json
 import logging
+import os
 import random
+import time
 
 import yaml
 from aiogram import Bot, Dispatcher, F
@@ -660,8 +663,9 @@ class MacBot:
                 # Free пользователь
                 msg = "Выберите тариф для оформления подписки:"
 
-            # Кнопка для открытия WebApp
-            webapp_url = f"{settings.BASE_URL}/static/webapp/index.html"
+            # Кнопка для открытия WebApp (с версией для обхода кеша)
+            cache_bust = int(time.time())
+            webapp_url = f"{settings.BASE_URL}/static/webapp/index.html?v={cache_bust}"
             self.logger.info(f"[SUBSCRIBE] WebApp URL: {webapp_url}")
             self.logger.info(f"[SUBSCRIBE] BASE_URL from settings: {settings.BASE_URL}")
 
@@ -675,12 +679,16 @@ class MacBot:
                 ]
             )
 
+            self.logger.info(f"[SUBSCRIBE] Message text: {msg[:200]}")
+            self.logger.info(f"[SUBSCRIBE] WebApp button URL: {webapp_url}")
             self.logger.info(
                 f"[SUBSCRIBE] Sending keyboard with WebApp button to user {user_id}"
             )
-            await message.answer(msg, reply_markup=keyboard)
+
+            result = await message.answer(msg, reply_markup=keyboard)
+
             self.logger.info(
-                f"[SUBSCRIBE] Successfully sent subscription info to user {user_id}"
+                f"[SUBSCRIBE] Successfully sent subscription info to user {user_id}, message_id: {result.message_id}"
             )
 
         except Exception as e:
