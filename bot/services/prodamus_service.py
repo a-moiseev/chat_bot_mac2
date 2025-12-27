@@ -137,6 +137,9 @@ class ProdamusService:
             'urlSuccess': settings.PRODAMUS_SUCCESS_URL,
             'urlReturn': settings.PRODAMUS_RETURN_URL,
             'sys': 'mac_bot',  # Идентификатор системы
+
+            # Параметры рекуррентной подписки
+            'subscription': '1',  # Включаем автоплатежи (клубная система)
         }
 
         # Добавляем опциональные параметры
@@ -149,19 +152,29 @@ class ProdamusService:
         # Тестовый режим
         if self.test_mode:
             payment_data['do'] = 'test'
-            logger.info("Creating payment link in TEST mode")
+            logger.info("[PRODAMUS] Creating payment link in TEST mode")
+
+        # Логируем параметры перед отправкой
+        logger.info(f"[PRODAMUS] Payment data before signing: {payment_data}")
 
         # Генерируем подпись
         signature = self.generate_signature(payment_data)
         payment_data['signature'] = signature
+
+        logger.info(f"[PRODAMUS] Generated signature: {signature[:20]}...")
 
         # Формируем URL
         query_string = urlencode(payment_data)
         payment_url = f"{self.merchant_url}?{query_string}"
 
         logger.info(
-            f"Created payment link for order {order_id}: "
-            f"{subscription_plan.name} ({subscription_plan.price}₽)"
+            f"[PRODAMUS] Sending request to Prodamus:\n"
+            f"  URL: {self.merchant_url}\n"
+            f"  Order: {order_id}\n"
+            f"  Product: {subscription_plan.name}\n"
+            f"  Price: {subscription_plan.price}₽\n"
+            f"  Subscription: YES (recurring)\n"
+            f"  Full URL length: {len(payment_url)} chars"
         )
 
         return payment_url
