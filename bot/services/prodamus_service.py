@@ -51,8 +51,8 @@ class ProdamusService:
         # Сортируем параметры по ключам
         sorted_params = sorted(data.items())
 
-        # Формируем строку для подписи: key1;value1;key2;value2
-        string_to_sign = ";".join([f"{k};{v}" for k, v in sorted_params])
+        # Формат Prodamus: склеиваем только ЗНАЧЕНИЯ через точку с запятой
+        string_to_sign = ";".join([str(v) for k, v in sorted_params])
 
         logger.info(
             f"[SIGNATURE] String to sign (first 200 chars): {string_to_sign[:200]}"
