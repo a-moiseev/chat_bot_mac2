@@ -170,6 +170,9 @@ class MacBot:
             return yaml.safe_load(file)
 
     def _setup_handlers(self) -> None:
+        # Temporary debug handler - logs ALL incoming messages
+        self.dp.message.register(self.debug_all_messages)
+
         self.dp.message.register(self.command_start_handler, CommandStart())
         self.dp.message.register(self.send_all_handler, Command("send_all"))
         self.dp.message.register(self.stats_handler, Command("stats"))
@@ -692,6 +695,20 @@ class MacBot:
         except Exception as e:
             self.logger.error(f"Ошибка в subscribe_handler: {e}")
             await message.answer("Произошла ошибка. Попробуйте позже.")
+
+    async def debug_all_messages(self, message: Message) -> None:
+        """Temporary debug handler - logs all incoming messages to help diagnose webapp issues"""
+        user_id = message.from_user.id
+
+        self.logger.info(
+            f"[DEBUG] Message from user {user_id}: "
+            f"content_type={message.content_type}, "
+            f"text={message.text if message.text else 'None'}, "
+            f"web_app_data={message.web_app_data if message.web_app_data else 'None'}"
+        )
+
+        if message.web_app_data:
+            self.logger.info(f"[DEBUG] WebApp data content: {message.web_app_data.data}")
 
     async def webapp_data_handler(self, message: Message) -> None:
         """Обработчик данных из WebApp - обработка выбора тарифа"""
