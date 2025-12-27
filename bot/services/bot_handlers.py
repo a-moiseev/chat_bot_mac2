@@ -129,8 +129,6 @@ class MacBot:
     def _create_storage(self) -> BaseStorage:
         """Создает хранилище состояний для бота"""
         # Проверяем, включен ли Redis через переменную окружения
-        import os
-
         logger = logging.getLogger("mac_bot")
         use_redis = os.getenv("USE_REDIS", "False").lower() == "true"
 
@@ -705,8 +703,6 @@ class MacBot:
         )
 
         try:
-            import json
-
             # Парсим данные из WebApp
             raw_data = message.web_app_data.data
             self.logger.info(f"[WEBAPP] Raw data: {raw_data}")
