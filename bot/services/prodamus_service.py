@@ -144,7 +144,10 @@ class ProdamusService:
         else:
             # Для разовой оплаты (если нет subscription_id) добавляем products
             payment_data["products[0][name]"] = subscription_plan.name
-            payment_data["products[0][price]"] = str(subscription_plan.price)
+            # Преобразуем цену: если целое число, убираем .00
+            price = subscription_plan.price
+            price_str = str(int(price)) if price == int(price) else str(price)
+            payment_data["products[0][price]"] = price_str
             payment_data["products[0][quantity]"] = "1"
             logger.warning(
                 f"[PRODAMUS] No Prodamus subscription ID for plan {subscription_plan.code}, using products"
