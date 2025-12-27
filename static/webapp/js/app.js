@@ -67,30 +67,23 @@ function selectPlan(plan) {
         return;
     }
 
-    // Show confirmation
-    const confirmMessage = `Вы выбрали: ${selectedPlan.name}\nСтоимость: ${selectedPlan.price}₽ за ${selectedPlan.duration}\n\nПродолжить?`;
+    // Prepare payment data
+    const paymentData = {
+        user_id: userId,
+        plan: plan,
+        amount: selectedPlan.price,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        username: user.username
+    };
 
-    tg.showConfirm(confirmMessage, function(confirmed) {
-        if (confirmed) {
-            // Prepare payment data
-            const paymentData = {
-                user_id: userId,
-                plan: plan,
-                amount: selectedPlan.price,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                username: user.username
-            };
+    // Send data back to bot immediately (without confirmation)
+    tg.sendData(JSON.stringify(paymentData));
 
-            // Send data back to bot
-            tg.sendData(JSON.stringify(paymentData));
-
-            // Close WebApp after sending data
-            setTimeout(() => {
-                tg.close();
-            }, 300);
-        }
-    });
+    // Close WebApp after sending data
+    setTimeout(() => {
+        tg.close();
+    }, 300);
 }
 
 // Handle theme changes
