@@ -147,29 +147,38 @@ class DjangoStorage:
             tuple[order_id, payment_url]: ID заказа и ссылка на оплату
         """
         try:
+            logger.info(f"[PAYMENT] Starting create_payment_order for user {user_id}, plan {plan_code}")
             from bot.services.prodamus_service import ProdamusService
 
             # Получаем тариф из БД
             try:
+                logger.info(f"[PAYMENT] Looking for subscription plan: {plan_code}")
                 subscription_plan = Subscription.objects.get(code=plan_code, is_active=True)
+                logger.info(f"[PAYMENT] Found subscription: {subscription_plan.name}, price: {subscription_plan.price}")
             except Subscription.DoesNotExist:
-                logger.error(f"Subscription plan '{plan_code}' not found or inactive")
+                logger.error(f"[PAYMENT] Subscription plan '{plan_code}' not found or inactive")
                 raise ValueError(f"Тариф '{plan_code}' не найден")
 
             # Получаем профиль пользователя
             try:
+                logger.info(f"[PAYMENT] Looking for user profile: {user_id}")
                 profile = TelegramProfile.objects.get(telegram_id=user_id)
+                logger.info(f"[PAYMENT] Found profile: {profile}")
             except TelegramProfile.DoesNotExist:
-                logger.error(f"User {user_id} not found")
+                logger.error(f"[PAYMENT] User {user_id} not found")
                 raise ValueError(f"Пользователь не найден")
 
             # Создаем сервис Prodamus
+            logger.info(f"[PAYMENT] Creating Prodamus service")
             prodamus = ProdamusService()
 
             # Генерируем order_id
+            logger.info(f"[PAYMENT] Generating order_id")
             order_id = prodamus.generate_order_id(user_id, plan_code)
+            logger.info(f"[PAYMENT] Generated order_id: {order_id}")
 
             # Создаем Payment запись
+            logger.info(f"[PAYMENT] Creating Payment record in DB")
             payment = Payment.objects.create(
                 telegram_profile=profile,
                 subscription_plan=subscription_plan,
@@ -177,24 +186,27 @@ class DjangoStorage:
                 amount=subscription_plan.price,
                 status='pending'
             )
+            logger.info(f"[PAYMENT] Payment record created: {payment}")
 
             # Генерируем платежную ссылку
+            logger.info(f"[PAYMENT] Generating payment URL")
             payment_url = prodamus.create_payment_link(
                 order_id=order_id,
                 subscription_plan=subscription_plan,
                 user_id=user_id,
                 username=username
             )
+            logger.info(f"[PAYMENT] Payment URL generated: {payment_url[:100]}...")
 
             logger.info(
-                f"Created payment order {order_id} for user {user_id}: "
+                f"[PAYMENT] SUCCESS: Created payment order {order_id} for user {user_id}: "
                 f"{subscription_plan.name} ({subscription_plan.price}₽)"
             )
 
             return order_id, payment_url
 
         except Exception as e:
-            logger.error(f"Error creating payment order: {e}")
+            logger.error(f"[PAYMENT] ERROR creating payment order: {e}", exc_info=True)
             raise
 
     @sync_to_async

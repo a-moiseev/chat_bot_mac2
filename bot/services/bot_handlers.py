@@ -668,23 +668,34 @@ class MacBot:
         user_id = message.from_user.id
         username = message.from_user.username
 
+        self.logger.info(f"[WEBAPP] Received WebApp data from user {user_id} (@{username})")
+
         try:
             import json
 
             # Парсим данные из WebApp
-            data = json.loads(message.web_app_data.data)
+            raw_data = message.web_app_data.data
+            self.logger.info(f"[WEBAPP] Raw data: {raw_data}")
+
+            data = json.loads(raw_data)
+            self.logger.info(f"[WEBAPP] Parsed data: {data}")
+
             plan_code = data.get("plan")
+            self.logger.info(f"[WEBAPP] Plan code: {plan_code}")
 
             if not plan_code:
+                self.logger.error(f"[WEBAPP] No plan code in data: {data}")
                 await message.answer("❌ Ошибка: тариф не выбран")
                 return
 
-            self.logger.info(f"User {username} ({user_id}) selected plan: {plan_code}")
+            self.logger.info(f"[WEBAPP] User {username} ({user_id}) selected plan: {plan_code}")
 
             # Создаем заказ на оплату
+            self.logger.info(f"[WEBAPP] Creating payment order...")
             order_id, payment_url = await self.db.create_payment_order(
                 user_id=user_id, plan_code=plan_code, username=username
             )
+            self.logger.info(f"[WEBAPP] Payment order created: {order_id}, URL: {payment_url[:50]}...")
 
             # Отправляем ссылку на оплату
             keyboard = InlineKeyboardMarkup(
