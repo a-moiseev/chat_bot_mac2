@@ -20,6 +20,12 @@ class Subscription(models.Model):
     )
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     description = models.TextField(blank=True, verbose_name="Описание")
+    prodamus_subscription_id = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="ID подписки в Prodamus",
+        help_text="ID подписки из личного кабинета Prodamus для рекуррентных платежей"
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

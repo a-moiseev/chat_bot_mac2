@@ -2,14 +2,14 @@ import hashlib
 import hmac
 import logging
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from urllib.parse import urlencode
 
 from django.conf import settings
 
 from bot.models import Subscription
 
-logger = logging.getLogger('mac_bot')
+logger = logging.getLogger("mac_bot")
 
 
 class ProdamusService:
@@ -52,17 +52,19 @@ class ProdamusService:
         sorted_params = sorted(data.items())
 
         # Формируем строку для подписи: key1;value1;key2;value2
-        string_to_sign = ';'.join([f"{k};{v}" for k, v in sorted_params])
+        string_to_sign = ";".join([f"{k};{v}" for k, v in sorted_params])
 
-        logger.info(f"[SIGNATURE] String to sign (first 200 chars): {string_to_sign[:200]}")
+        logger.info(
+            f"[SIGNATURE] String to sign (first 200 chars): {string_to_sign[:200]}"
+        )
         logger.info(f"[SIGNATURE] Secret key length: {len(self.secret_key)} chars")
         logger.info(f"[SIGNATURE] Secret key first 10 chars: {self.secret_key[:10]}...")
 
         # Генерируем HMAC SHA256
         signature = hmac.new(
-            self.secret_key.encode('utf-8'),
-            string_to_sign.encode('utf-8'),
-            hashlib.sha256
+            self.secret_key.encode("utf-8"),
+            string_to_sign.encode("utf-8"),
+            hashlib.sha256,
         ).hexdigest()
 
         logger.info(f"[SIGNATURE] Generated signature: {signature}")
@@ -79,7 +81,7 @@ class ProdamusService:
             True если подпись валидна, False иначе
         """
         # Убираем signature из данных перед проверкой
-        data_copy = {k: v for k, v in data.items() if k != 'signature'}
+        data_copy = {k: v for k, v in data.items() if k != "signature"}
 
         # Генерируем ожидаемую подпись
         expected_signature = self.generate_signature(data_copy)
@@ -88,7 +90,9 @@ class ProdamusService:
         is_valid = hmac.compare_digest(expected_signature, received_signature)
 
         if not is_valid:
-            logger.warning(f"Invalid webhook signature. Expected: {expected_signature[:10]}..., Got: {received_signature[:10]}...")
+            logger.warning(
+                f"Invalid webhook signature. Expected: {expected_signature[:10]}..., Got: {received_signature[:10]}..."
+            )
 
         return is_valid
 
@@ -103,7 +107,9 @@ class ProdamusService:
         """
         try:
             subscription = Subscription.objects.get(code=plan_code, is_active=True)
-            logger.debug(f"Found subscription: {subscription.name} ({subscription.code})")
+            logger.debug(
+                f"Found subscription: {subscription.name} ({subscription.code})"
+            )
             return subscription
         except Subscription.DoesNotExist:
             logger.error(f"Subscription with code '{plan_code}' not found or inactive")
@@ -115,7 +121,7 @@ class ProdamusService:
         subscription_plan: Subscription,
         user_id: int,
         username: Optional[str] = None,
-        email: Optional[str] = None
+        email: Optional[str] = None,
     ) -> str:
         """Создание ссылки для оплаты через Prodamus
 
@@ -131,31 +137,44 @@ class ProdamusService:
         """
         # Формируем параметры платежа
         payment_data = {
-            'do': 'link',  # Тип операции
-            'order_id': order_id,
-            'products[0][name]': subscription_plan.name,
-            'products[0][price]': str(subscription_plan.price),
-            'products[0][quantity]': '1',
-            'customer_extra': str(user_id),  # Сохраняем telegram_id для webhook
-            'urlNotification': settings.PRODAMUS_WEBHOOK_URL,
-            'urlSuccess': settings.PRODAMUS_SUCCESS_URL,
-            'urlReturn': settings.PRODAMUS_RETURN_URL,
-            'sys': 'mac_bot',  # Идентификатор системы
-
-            # Параметры рекуррентной подписки
-            'subscription': '1',  # Включаем автоплатежи (клубная система)
+            "do": "link",  # Тип операции
+            "order_id": order_id,
+            "products[0][name]": subscription_plan.name,
+            "products[0][price]": str(subscription_plan.price),
+            "products[0][quantity]": "1",
+            "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
+            "urlNotification": settings.PRODAMUS_WEBHOOK_URL,
+            "urlSuccess": settings.PRODAMUS_SUCCESS_URL,
+            "sys": "mac_bot",  # Идентификатор системы
         }
+
+        # Добавляем ID подписки Prodamus для рекуррентных платежей
+        if subscription_plan.prodamus_subscription_id:
+            payment_data["subscription"] = str(
+                subscription_plan.prodamus_subscription_id
+            )
+            logger.info(
+                f"[PRODAMUS] Using Prodamus subscription ID: {subscription_plan.prodamus_subscription_id}"
+            )
+        else:
+            logger.warning(
+                f"[PRODAMUS] No Prodamus subscription ID for plan {subscription_plan.code}"
+            )
+
+        # Добавляем urlReturn только если он не пустой
+        if settings.PRODAMUS_RETURN_URL:
+            payment_data["urlReturn"] = settings.PRODAMUS_RETURN_URL
 
         # Добавляем опциональные параметры
         if username:
-            payment_data['customer_comment'] = f"Telegram: @{username}"
+            payment_data["customer_comment"] = f"Telegram: @{username}"
 
         if email:
-            payment_data['customer_email'] = email
+            payment_data["customer_email"] = email
 
         # Тестовый режим
         if self.test_mode:
-            payment_data['do'] = 'test'
+            payment_data["do"] = "test"
             logger.info("[PRODAMUS] Creating payment link in TEST mode")
 
         # Логируем параметры перед отправкой
@@ -163,7 +182,7 @@ class ProdamusService:
 
         # Генерируем подпись
         signature = self.generate_signature(payment_data)
-        payment_data['signature'] = signature
+        payment_data["signature"] = signature
 
         logger.info(f"[PRODAMUS] Generated signature: {signature[:20]}...")
 
@@ -197,10 +216,10 @@ class ProdamusService:
             return None
 
         return {
-            'name': subscription.name,
-            'code': subscription.code,
-            'price': float(subscription.price),
-            'duration_days': subscription.duration_days,
-            'daily_sessions_limit': subscription.daily_sessions_limit,
-            'cards_limit': subscription.cards_limit,
+            "name": subscription.name,
+            "code": subscription.code,
+            "price": float(subscription.price),
+            "duration_days": subscription.duration_days,
+            "daily_sessions_limit": subscription.daily_sessions_limit,
+            "cards_limit": subscription.cards_limit,
         }
