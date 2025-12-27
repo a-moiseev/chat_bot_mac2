@@ -61,7 +61,7 @@ class UserStateAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'price', 'duration_days', 'daily_sessions_limit', 'cards_limit', 'is_active')
+    list_display = ('name', 'code', 'price', 'duration_days', 'daily_sessions_limit', 'cards_limit', 'prodamus_subscription_id', 'is_active')
     list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'code', 'description')
     ordering = ('price',)
@@ -76,6 +76,9 @@ class SubscriptionAdmin(admin.ModelAdmin):
         }),
         ('Лимиты', {
             'fields': ('daily_sessions_limit', 'cards_limit')
+        }),
+        ('Интеграция Prodamus', {
+            'fields': ('prodamus_subscription_id',)
         }),
         ('Метаданные', {
             'fields': ('created_at', 'updated_at')
