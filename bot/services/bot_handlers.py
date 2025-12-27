@@ -22,6 +22,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     WebAppInfo,
 )
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from redis.asyncio import Redis
 
@@ -174,7 +175,9 @@ class MacBot:
         self.dp.message.register(self.subscribe_handler, Command("subscribe"))
         self.dp.message.register(self.oferta_handler, Command("oferta"))
         self.dp.message.register(self.privacy_handler, Command("privacy"))
-        self.dp.message.register(self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA)
+        self.dp.message.register(
+            self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA
+        )
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
         self.dp.message.register(
@@ -230,8 +233,6 @@ class MacBot:
 
         if not can_start and not is_staff:
             # Получаем информацию о подписке для сообщения
-            from asgiref.sync import sync_to_async
-
             profile = await self.db.get_user(message.from_user.id)
             session_limit = (
                 await sync_to_async(profile.get_daily_session_limit)() if profile else 1
@@ -244,7 +245,9 @@ class MacBot:
 
             # Сообщение зависит от типа подписки
             current_sub = (
-                await sync_to_async(lambda: profile.current_subscription)() if profile else None
+                await sync_to_async(lambda: profile.current_subscription)()
+                if profile
+                else None
             )
             sub_code = (
                 await sync_to_async(lambda: current_sub.code)() if current_sub else None
@@ -342,7 +345,9 @@ class MacBot:
         total_cards = len(list(cards_folder.glob("*.jpg")))
 
         # None = без ограничений (premium), иначе используем лимит
-        max_card_number = total_cards if cards_limit is None else min(cards_limit, total_cards)
+        max_card_number = (
+            total_cards if cards_limit is None else min(cards_limit, total_cards)
+        )
 
         image_number = random.randint(1, max_card_number)
         image_name = f"{image_number:05}.jpg"
@@ -601,7 +606,9 @@ class MacBot:
         user_id = message.from_user.id
         username = message.from_user.username or "Unknown"
 
-        self.logger.info(f"[SUBSCRIBE] User {user_id} (@{username}) called /subscribe command")
+        self.logger.info(
+            f"[SUBSCRIBE] User {user_id} (@{username}) called /subscribe command"
+        )
 
         try:
             # Получаем профиль пользователя
@@ -612,23 +619,28 @@ class MacBot:
                 await message.answer("Ошибка: профиль не найден. Используйте /start")
                 return
 
-            # Проверяем текущую подписку
-            from asgiref.sync import sync_to_async
-
             current_sub = await sync_to_async(lambda: profile.current_subscription)()
-            sub_code = await sync_to_async(lambda: current_sub.code if current_sub else None)()
+            sub_code = await sync_to_async(
+                lambda: current_sub.code if current_sub else None
+            )()
             is_premium = current_sub and sub_code != "free"
 
             if is_premium:
-                expires_at = await sync_to_async(lambda: profile.subscription_expires_at)()
+                expires_at = await sync_to_async(
+                    lambda: profile.subscription_expires_at
+                )()
                 if expires_at:
                     # Пользователь уже premium
                     expires_date = expires_at.strftime("%d.%m.%Y")
                     sub_name = await sync_to_async(lambda: current_sub.name)()
                     sub_price = await sync_to_async(lambda: current_sub.price)()
-                    daily_limit = await sync_to_async(lambda: current_sub.daily_sessions_limit)()
+                    daily_limit = await sync_to_async(
+                        lambda: current_sub.daily_sessions_limit
+                    )()
                     cards_limit = await sync_to_async(lambda: current_sub.cards_limit)()
-                    cards_text = "Все 81 карта" if cards_limit is None else f"{cards_limit} карт"
+                    cards_text = (
+                        "Все 81 карта" if cards_limit is None else f"{cards_limit} карт"
+                    )
 
                     msg = f"""✨ <b>Ваша подписка</b>
 
@@ -663,9 +675,13 @@ class MacBot:
                 ]
             )
 
-            self.logger.info(f"[SUBSCRIBE] Sending keyboard with WebApp button to user {user_id}")
+            self.logger.info(
+                f"[SUBSCRIBE] Sending keyboard with WebApp button to user {user_id}"
+            )
             await message.answer(msg, reply_markup=keyboard)
-            self.logger.info(f"[SUBSCRIBE] Successfully sent subscription info to user {user_id}")
+            self.logger.info(
+                f"[SUBSCRIBE] Successfully sent subscription info to user {user_id}"
+            )
 
         except Exception as e:
             self.logger.error(f"Ошибка в subscribe_handler: {e}")
@@ -676,7 +692,9 @@ class MacBot:
         user_id = message.from_user.id
         username = message.from_user.username
 
-        self.logger.info(f"[WEBAPP] Received WebApp data from user {user_id} (@{username})")
+        self.logger.info(
+            f"[WEBAPP] Received WebApp data from user {user_id} (@{username})"
+        )
 
         try:
             import json
@@ -696,14 +714,18 @@ class MacBot:
                 await message.answer("❌ Ошибка: тариф не выбран")
                 return
 
-            self.logger.info(f"[WEBAPP] User {username} ({user_id}) selected plan: {plan_code}")
+            self.logger.info(
+                f"[WEBAPP] User {username} ({user_id}) selected plan: {plan_code}"
+            )
 
             # Создаем заказ на оплату
             self.logger.info(f"[WEBAPP] Creating payment order...")
             order_id, payment_url = await self.db.create_payment_order(
                 user_id=user_id, plan_code=plan_code, username=username
             )
-            self.logger.info(f"[WEBAPP] Payment order created: {order_id}, URL: {payment_url[:50]}...")
+            self.logger.info(
+                f"[WEBAPP] Payment order created: {order_id}, URL: {payment_url[:50]}..."
+            )
 
             # Отправляем ссылку на оплату
             keyboard = InlineKeyboardMarkup(
@@ -767,13 +789,16 @@ class MacBot:
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="🔒 Открыть политику", web_app=WebAppInfo(url=privacy_url)
+                            text="🔒 Открыть политику",
+                            web_app=WebAppInfo(url=privacy_url),
                         )
                     ]
                 ]
             )
 
-            await message.answer("🔒 <b>Политика конфиденциальности</b>", reply_markup=keyboard)
+            await message.answer(
+                "🔒 <b>Политика конфиденциальности</b>", reply_markup=keyboard
+            )
 
         except Exception as e:
             self.logger.error(f"Error in privacy_handler: {e}")
