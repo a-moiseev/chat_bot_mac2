@@ -12,7 +12,13 @@ class TestProdamusServiceInit:
         """Проверка инициализации с настройками из settings"""
         service = ProdamusService()
         assert service.merchant_url == settings.PRODAMUS_MERCHANT_URL
-        assert service.secret_key == settings.PRODAMUS_SECRET_KEY
+
+        # В тестовом режиме к ключу добавляется суффикс "demo"
+        if settings.PRODAMUS_TEST_MODE:
+            assert service.secret_key == settings.PRODAMUS_SECRET_KEY + "demo"
+        else:
+            assert service.secret_key == settings.PRODAMUS_SECRET_KEY
+
         assert service.test_mode == settings.PRODAMUS_TEST_MODE
 
 
