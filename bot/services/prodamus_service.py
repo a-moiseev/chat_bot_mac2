@@ -22,8 +22,14 @@ class ProdamusService:
     def __init__(self):
         """Инициализация сервиса с настройками из Django settings"""
         self.merchant_url = settings.PRODAMUS_MERCHANT_URL
-        self.secret_key = settings.PRODAMUS_SECRET_KEY
         self.test_mode = settings.PRODAMUS_TEST_MODE
+
+        # Для демо-платежей добавляем суффикс "demo" к ключу
+        if self.test_mode:
+            self.secret_key = settings.PRODAMUS_SECRET_KEY + "demo"
+            logger.info("[PRODAMUS] Using demo secret key (with 'demo' suffix)")
+        else:
+            self.secret_key = settings.PRODAMUS_SECRET_KEY
 
     def generate_order_id(self, user_id: int, plan_code: str) -> str:
         """Генерация уникального ID заказа
