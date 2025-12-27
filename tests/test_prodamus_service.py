@@ -244,7 +244,6 @@ class TestCreatePaymentLink:
         # Проверяем обязательные поля
         assert "order_id=" in url
         assert "customer_extra=" in url
-        assert "sys=" in url
         assert "signature=" in url
 
 

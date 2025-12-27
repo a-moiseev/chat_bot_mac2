@@ -128,7 +128,6 @@ class ProdamusService:
             "order_id": order_id,
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
             "urlSuccess": settings.PRODAMUS_SUCCESS_URL,  # Редирект после успешной оплаты
-            "sys": "mac_bot",  # Идентификатор системы
         }
 
         # Добавляем ID подписки Prodamus для рекуррентных платежей
