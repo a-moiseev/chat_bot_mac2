@@ -16,6 +16,7 @@ from aiogram.fsm.storage.base import BaseStorage
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import (
+    CallbackQuery,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -178,6 +179,11 @@ class MacBot:
         self.dp.message.register(self.privacy_handler, Command("privacy"))
         self.dp.message.register(
             self.webapp_data_handler, F.content_type == ContentType.WEB_APP_DATA
+        )
+
+        # Callback query handlers
+        self.dp.callback_query.register(
+            self.plan_callback_handler, F.data.startswith("plan_")
         )
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
@@ -659,28 +665,41 @@ class MacBot:
 
             if not is_premium:
                 # Free пользователь
-                msg = "Выберите тариф для оформления подписки:"
+                msg = """Выберите тариф:
 
-            # Кнопка для открытия WebApp (с версией для обхода кеша)
+💳 Месячная - 300₽
+💎 Годовая - 3000₽ (-17%)
+
+✨ 3 сессии/день • Все 81 карта"""
+
+            # Клавиатура с выбором тарифа
             cache_bust = int(time.time())
             webapp_url = f"{settings.BASE_URL}/static/webapp/index.html?v={cache_bust}"
-            self.logger.info(f"[SUBSCRIBE] WebApp URL: {webapp_url}")
-            self.logger.info(f"[SUBSCRIBE] BASE_URL from settings: {settings.BASE_URL}")
 
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="💳 Выбрать тариф", web_app=WebAppInfo(url=webapp_url)
+                            text="📊 Сравнить тарифы",
+                            web_app=WebAppInfo(url=webapp_url),
                         )
-                    ]
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="💳 Месячная - 300₽", callback_data="plan_monthly"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="💎 Годовая - 3000₽ (скидка 17%)",
+                            callback_data="plan_yearly",
+                        )
+                    ],
                 ]
             )
 
-            self.logger.info(f"[SUBSCRIBE] Message text: {msg[:200]}")
-            self.logger.info(f"[SUBSCRIBE] WebApp button URL: {webapp_url}")
             self.logger.info(
-                f"[SUBSCRIBE] Sending keyboard with WebApp button to user {user_id}"
+                f"[SUBSCRIBE] Sending subscription options to user {user_id}"
             )
 
             result = await message.answer(msg, reply_markup=keyboard)
@@ -759,6 +778,56 @@ class MacBot:
             self.logger.error(f"Error in webapp_data_handler: {e}")
             await message.answer(
                 "❌ Произошла ошибка при создании заказа. Попробуйте позже."
+            )
+
+    async def plan_callback_handler(self, callback: CallbackQuery) -> None:
+        """Обработчик выбора тарифа через inline кнопки"""
+        user_id = callback.from_user.id
+        username = callback.from_user.username
+        plan_code = callback.data.replace("plan_", "")  # plan_monthly -> monthly
+
+        self.logger.info(
+            f"[PLAN] User {username} ({user_id}) selected plan via callback: {plan_code}"
+        )
+
+        try:
+            # Создаем заказ на оплату
+            self.logger.info(f"[PLAN] Creating payment order for {plan_code}...")
+            order_id, payment_url = await self.db.create_payment_order(
+                user_id=user_id, plan_code=plan_code, username=username
+            )
+            self.logger.info(
+                f"[PLAN] Payment order created: {order_id}, URL: {payment_url[:50]}..."
+            )
+
+            # Открываем ссылку на оплату напрямую через callback
+            await callback.answer(url=payment_url)
+
+            # Опционально: обновляем сообщение чтобы показать что заказ создан
+            plan_names = {
+                "monthly": "Месячная (300₽)",
+                "yearly": "Годовая (3000₽)",
+            }
+            plan_name = plan_names.get(plan_code, plan_code)
+
+            await callback.message.edit_text(
+                f"✅ Заказ создан: {plan_name}\n\n"
+                f"Откройте страницу оплаты для завершения.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)]
+                    ]
+                ),
+            )
+
+        except ValueError as e:
+            self.logger.error(f"ValueError in plan_callback_handler: {e}")
+            await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+        except Exception as e:
+            self.logger.error(f"Error in plan_callback_handler: {e}")
+            await callback.answer(
+                "❌ Произошла ошибка при создании заказа. Попробуйте позже.",
+                show_alert=True,
             )
 
     async def oferta_handler(self, message: Message) -> None:
