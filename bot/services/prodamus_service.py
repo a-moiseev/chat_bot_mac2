@@ -1,8 +1,8 @@
 import logging
 import uuid
 from typing import Dict, Optional
-from urllib.parse import urlencode
 
+import aiohttp
 from django.conf import settings
 from prodamuspy import ProdamusPy
 
@@ -102,22 +102,20 @@ class ProdamusService:
             logger.error(f"Subscription with code '{plan_code}' not found or inactive")
             return None
 
-    def create_payment_link(
+    async def create_payment_link(
         self,
         order_id: str,
         subscription_plan: Subscription,
         user_id: int,
         username: Optional[str] = None,
-        email: Optional[str] = None,
     ) -> str:
-        """Создание ссылки для оплаты через Prodamus
+        """Создание ссылки для оплаты через POST запрос к Prodamus API
 
         Args:
             order_id: Уникальный ID заказа
             subscription_plan: Объект тарифа из БД
             user_id: Telegram ID пользователя
             username: Telegram username (опционально)
-            email: Email пользователя (опционально)
 
         Returns:
             URL для оплаты через Prodamus
@@ -127,7 +125,6 @@ class ProdamusService:
             "do": "link",  # Тип операции
             "order_id": order_id,
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
-            "urlSuccess": settings.PRODAMUS_SUCCESS_URL,  # Редирект после успешной оплаты
         }
 
         # Добавляем ID подписки Prodamus для рекуррентных платежей
@@ -155,38 +152,60 @@ class ProdamusService:
         if username:
             payment_data["customer_comment"] = f"Telegram: @{username}"
 
-        if email:
-            payment_data["customer_email"] = email
-
         # Тестовый режим
         if self.test_mode:
             payment_data["do"] = "test"
             logger.info("[PRODAMUS] Creating payment link in TEST mode")
 
         # Логируем параметры перед отправкой
-        logger.info(f"[PRODAMUS] Payment data before signing: {payment_data}")
+        logger.info(f"[PRODAMUS API] Payment data before signing: {payment_data}")
 
         # Генерируем подпись
         signature = self.generate_signature(payment_data)
         payment_data["signature"] = signature
 
-        logger.info(f"[PRODAMUS] Generated signature: {signature[:20]}...")
+        logger.info(f"[PRODAMUS API] Generated signature: {signature[:20]}...")
 
-        # Формируем URL
-        query_string = urlencode(payment_data)
-        payment_url = f"{self.merchant_url}?{query_string}"
+        # Отправляем POST запрос к Prodamus
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.merchant_url,
+                    data=payment_data,  # form-data формат
+                    timeout=aiohttp.ClientTimeout(total=10),
+                    allow_redirects=False,
+                ) as response:
+                    logger.info(f"[PRODAMUS API] Response status: {response.status}")
+                    logger.info(
+                        f"[PRODAMUS API] Response headers: {dict(response.headers)}"
+                    )
 
-        logger.info(
-            f"[PRODAMUS] Sending request to Prodamus:\n"
-            f"  URL: {self.merchant_url}\n"
-            f"  Order: {order_id}\n"
-            f"  Product: {subscription_plan.name}\n"
-            f"  Price: {subscription_plan.price}₽\n"
-            f"  Subscription: YES (recurring)\n"
-            f"  Full URL length: {len(payment_url)} chars"
-        )
+                    # Prodamus возвращает plain text URL в теле ответа
+                    if response.status == 200:
+                        payment_url = await response.text()
+                        payment_url = payment_url.strip()  # Убираем пробелы
 
-        return payment_url
+                        logger.info(
+                            f"[PRODAMUS API] Got payment URL: {payment_url}\n"
+                            f"  Order: {order_id}\n"
+                            f"  Product: {subscription_plan.name}\n"
+                            f"  Price: {subscription_plan.price}₽\n"
+                            f"  Subscription: YES (recurring)"
+                        )
+
+                        return payment_url
+                    else:
+                        # Неожиданный статус
+                        text = await response.text()
+                        logger.error(
+                            f"[PRODAMUS API] Unexpected status code: {response.status}"
+                        )
+                        logger.error(f"[PRODAMUS API] Response body: {text[:500]}")
+                        raise ValueError(f"Prodamus API error: {response.status}")
+
+        except aiohttp.ClientError as e:
+            logger.error(f"[PRODAMUS API] Request failed: {e}")
+            raise ValueError(f"Failed to connect to Prodamus: {e}")
 
     def get_plan_info(self, plan_code: str) -> Optional[Dict]:
         """Получить информацию о тарифе

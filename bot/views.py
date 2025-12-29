@@ -1,18 +1,16 @@
-import json
 import logging
-from datetime import timedelta
 
 from django.conf import settings
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.http import require_GET, require_POST
 
-from bot.models import TelegramProfile, Payment
+from bot.models import Payment, TelegramProfile
 from bot.services.prodamus_service import ProdamusService
 
-logger = logging.getLogger('mac_bot')
+logger = logging.getLogger("mac_bot")
 
 
 @csrf_exempt
@@ -30,26 +28,37 @@ def prodamus_webhook(request):
     try:
         # Парсим данные из POST запроса
         data = request.POST.dict()
-        logger.info(f"Received webhook from Prodamus: {data.get('order_id')}")
+
+        # Детальное логирование webhook
+        logger.info("[PRODAMUS WEBHOOK] Received webhook")
+        logger.info(f"[PRODAMUS WEBHOOK] Headers: {dict(request.headers)}")
+        logger.info(f"[PRODAMUS WEBHOOK] Body: {data}")
+        logger.info(
+            f"[PRODAMUS WEBHOOK] Signature: {data.get('signature', 'NO SIGNATURE')}"
+        )
 
         # Извлекаем ключевые параметры
-        order_id = data.get('order_id')
-        payment_status = data.get('payment_status', '').lower()
-        payment_id = data.get('payment_id')
-        subscription_id = data.get('subscription_id')
-        customer_extra = data.get('customer_extra')  # telegram_id
-        signature = data.get('signature')
+        order_id = data.get("order_id")
+        payment_status = data.get("payment_status", "").lower()
+        payment_id = data.get("payment_id")
+        subscription_id = data.get("subscription_id")
+        customer_extra = data.get("customer_extra")  # telegram_id
+        signature = data.get("signature")
 
         # Валидация обязательных полей
         if not all([order_id, payment_status, signature]):
-            logger.error("Missing required fields in webhook data")
-            return JsonResponse({'error': 'Missing required fields'}, status=400)
+            logger.error("[PRODAMUS WEBHOOK] Missing required fields in webhook data")
+            return JsonResponse({"error": "Missing required fields"}, status=400)
 
         # Проверка подписи для безопасности
         service = ProdamusService()
-        if not service.verify_webhook_signature(data, signature):
-            logger.error(f"Invalid webhook signature for order {order_id}")
-            return JsonResponse({'error': 'Invalid signature'}, status=403)
+        is_valid = service.verify_webhook_signature(data, signature)
+
+        if is_valid:
+            logger.info(f"[PRODAMUS WEBHOOK] Signature VALID for order {order_id}")
+        else:
+            logger.warning(f"[PRODAMUS WEBHOOK] Signature INVALID for order {order_id}")
+            return JsonResponse({"error": "Invalid signature"}, status=403)
 
         # Поиск или создание Payment записи
         try:
@@ -58,8 +67,10 @@ def prodamus_webhook(request):
         except Payment.DoesNotExist:
             # Если платеж не найден, пытаемся создать (на случай race condition)
             if not customer_extra:
-                logger.error(f"Payment {order_id} not found and no customer_extra provided")
-                return JsonResponse({'error': 'Payment not found'}, status=404)
+                logger.error(
+                    f"Payment {order_id} not found and no customer_extra provided"
+                )
+                return JsonResponse({"error": "Payment not found"}, status=404)
 
             try:
                 telegram_id = int(customer_extra)
@@ -73,13 +84,13 @@ def prodamus_webhook(request):
                     payment_id=payment_id,
                     subscription_id=subscription_id,
                     amount=0,  # Будет обновлено из webhook_data
-                    status='pending',
-                    webhook_data=data
+                    status="pending",
+                    webhook_data=data,
                 )
                 logger.warning(f"Created payment from webhook: {order_id}")
             except (ValueError, TelegramProfile.DoesNotExist) as e:
                 logger.error(f"Cannot create payment for order {order_id}: {e}")
-                return JsonResponse({'error': 'Invalid customer data'}, status=400)
+                return JsonResponse({"error": "Invalid customer data"}, status=400)
 
         # Обновляем статус платежа
         old_status = payment.status
@@ -89,7 +100,7 @@ def prodamus_webhook(request):
         payment.webhook_data = data
 
         # При успешной оплате активируем подписку
-        if payment_status == 'success' and old_status != 'success':
+        if payment_status == "success" and old_status != "success":
             payment.paid_at = timezone.now()
 
             # Проверяем наличие subscription_plan
@@ -115,15 +126,13 @@ def prodamus_webhook(request):
         )
 
         # Возвращаем успешный ответ Prodamus
-        return JsonResponse({
-            'status': 'ok',
-            'order_id': order_id,
-            'payment_status': payment_status
-        })
+        return JsonResponse(
+            {"status": "ok", "order_id": order_id, "payment_status": payment_status}
+        )
 
     except Exception as e:
         logger.exception(f"Error processing webhook: {e}")
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        return JsonResponse({"error": "Internal server error"}, status=500)
 
 
 @require_GET
@@ -133,22 +142,24 @@ def prodamus_success(request):
     Отображается после успешного платежа в Prodamus.
     Пользователь перенаправляется сюда через urlSuccess.
     """
-    order_id = request.GET.get('order_id')
+    order_id = request.GET.get("order_id")
 
     context = {
-        'success': True,
-        'order_id': order_id,
-        'bot_url': settings.PRODAMUS_RETURN_URL,
+        "success": True,
+        "order_id": order_id,
+        "bot_url": settings.PRODAMUS_RETURN_URL,
     }
 
     # Пытаемся получить информацию о платеже
     if order_id:
         try:
             payment = Payment.objects.get(order_id=order_id)
-            context['subscription_name'] = payment.subscription_plan.name if payment.subscription_plan else None
-            context['expires_at'] = payment.telegram_profile.subscription_expires_at
+            context["subscription_name"] = (
+                payment.subscription_plan.name if payment.subscription_plan else None
+            )
+            context["expires_at"] = payment.telegram_profile.subscription_expires_at
             logger.info(f"Success page viewed for order {order_id}")
         except Payment.DoesNotExist:
             logger.warning(f"Payment {order_id} not found on success page")
 
-    return render(request, 'bot/payment_success.html', context)
+    return render(request, "bot/payment_success.html", context)

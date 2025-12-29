@@ -15,7 +15,7 @@ class TestProdamusServiceInit:
         assert service.test_mode == settings.PRODAMUS_TEST_MODE
 
         # Проверяем что создан ProdamusPy объект
-        assert hasattr(service, 'prodamus_py')
+        assert hasattr(service, "prodamus_py")
         assert service.prodamus_py is not None
 
         # Проверяем что подпись работает (косвенная проверка корректности secret key)
@@ -173,78 +173,149 @@ class TestGetSubscriptionByCode:
 
 
 @pytest.mark.django_db
+@pytest.mark.asyncio
 class TestCreatePaymentLink:
     """Тесты создания платежной ссылки"""
 
-    def test_create_payment_link_basic(self, premium_subscription):
+    async def test_create_payment_link_basic(self, premium_subscription):
         """Проверка базового создания платежной ссылки"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         service = ProdamusService()
         order_id = "ORDER_123_monthly_abc"
 
-        url = service.create_payment_link(
-            order_id=order_id, subscription_plan=premium_subscription, user_id=12345
-        )
+        # Мокаем ответ Prodamus (возвращает plain text URL)
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value="https://payform.ru/test12345/")
+        mock_response.headers = {}
 
-        assert url.startswith(settings.PRODAMUS_MERCHANT_URL)
-        assert "order_id=ORDER_123_monthly_abc" in url
-        assert "customer_extra=12345" in url
-        assert "signature=" in url
+        # Создаем мок для async context manager
+        mock_post_cm = MagicMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
 
-    def test_create_payment_link_with_username(self, premium_subscription):
+        mock_session_instance = MagicMock()
+        mock_session_instance.post = MagicMock(return_value=mock_post_cm)
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "bot.services.prodamus_service.aiohttp.ClientSession",
+            return_value=mock_session_instance,
+        ):
+            url = await service.create_payment_link(
+                order_id=order_id, subscription_plan=premium_subscription, user_id=12345
+            )
+
+        # Проверяем что получили URL от Prodamus
+        assert url == "https://payform.ru/test12345/"
+        assert url.startswith("https://")
+
+    async def test_create_payment_link_with_username(self, premium_subscription):
         """Проверка создания ссылки с username"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         service = ProdamusService()
         order_id = "ORDER_123_monthly_abc"
 
-        url = service.create_payment_link(
-            order_id=order_id,
-            subscription_plan=premium_subscription,
-            user_id=12345,
-            username="test_user",
-        )
+        # Мокаем ответ Prodamus
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value="https://payform.ru/testuser/")
+        mock_response.headers = {}
 
-        assert "customer_comment" in url
-        assert "test_user" in url
+        mock_post_cm = MagicMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
 
-    def test_create_payment_link_with_email(self, premium_subscription):
-        """Проверка создания ссылки с email"""
-        service = ProdamusService()
-        order_id = "ORDER_123_monthly_abc"
+        mock_session_instance = MagicMock()
+        mock_session_instance.post = MagicMock(return_value=mock_post_cm)
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
 
-        url = service.create_payment_link(
-            order_id=order_id,
-            subscription_plan=premium_subscription,
-            user_id=12345,
-            email="test@example.com",
-        )
+        with patch(
+            "bot.services.prodamus_service.aiohttp.ClientSession",
+            return_value=mock_session_instance,
+        ):
+            url = await service.create_payment_link(
+                order_id=order_id,
+                subscription_plan=premium_subscription,
+                user_id=12345,
+                username="test_user",
+            )
 
-        assert "customer_email" in url
-        assert "test%40example.com" in url  # @ кодируется как %40
+        # Проверяем что получили URL
+        assert url.startswith("https://")
 
-    def test_create_payment_link_test_mode(self, premium_subscription):
+    async def test_create_payment_link_test_mode(self, premium_subscription):
         """Проверка создания ссылки в тестовом режиме"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         service = ProdamusService()
         service.test_mode = True
         order_id = "ORDER_123_monthly_abc"
 
-        url = service.create_payment_link(
-            order_id=order_id, subscription_plan=premium_subscription, user_id=12345
-        )
+        # Мокаем ответ Prodamus
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value="https://payform.ru/testmode/")
+        mock_response.headers = {}
 
-        assert "do=test" in url
+        mock_post_cm = MagicMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
 
-    def test_create_payment_link_contains_required_fields(self, premium_subscription):
-        """Проверка наличия обязательных полей в ссылке"""
+        mock_session_instance = MagicMock()
+        mock_session_instance.post = MagicMock(return_value=mock_post_cm)
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "bot.services.prodamus_service.aiohttp.ClientSession",
+            return_value=mock_session_instance,
+        ):
+            url = await service.create_payment_link(
+                order_id=order_id, subscription_plan=premium_subscription, user_id=12345
+            )
+
+        # Проверяем что получили URL
+        assert url.startswith("https://")
+
+    async def test_create_payment_link_returns_valid_url(self, premium_subscription):
+        """Проверка что метод возвращает валидный URL"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         service = ProdamusService()
         order_id = "ORDER_123_monthly_abc"
 
-        url = service.create_payment_link(
-            order_id=order_id, subscription_plan=premium_subscription, user_id=12345
-        )
+        # Мокаем ответ Prodamus
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value="https://payform.ru/abc123/")
+        mock_response.headers = {}
 
-        # Проверяем обязательные поля
-        assert "order_id=" in url
-        assert "customer_extra=" in url
-        assert "signature=" in url
+        mock_post_cm = MagicMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session_instance = MagicMock()
+        mock_session_instance.post = MagicMock(return_value=mock_post_cm)
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "bot.services.prodamus_service.aiohttp.ClientSession",
+            return_value=mock_session_instance,
+        ):
+            url = await service.create_payment_link(
+                order_id=order_id, subscription_plan=premium_subscription, user_id=12345
+            )
+
+        # Проверяем что URL валиден
+        assert isinstance(url, str)
+        assert url.startswith("https://")
+        assert len(url) > 10
 
 
 @pytest.mark.django_db

@@ -1,15 +1,21 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
+
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User as DjangoUser
-from django.db.models import Count, Q
 from django.utils import timezone
 
-from bot.models import TelegramProfile, StateType, UserState, Payment, Subscription, UserSession
+from bot.models import (
+    Payment,
+    StateType,
+    Subscription,
+    TelegramProfile,
+    UserSession,
+    UserState,
+)
 
-
-logger = logging.getLogger('mac_bot')
+logger = logging.getLogger("mac_bot")
 
 
 class DjangoStorage:
@@ -27,23 +33,23 @@ class DjangoStorage:
             django_user, created = DjangoUser.objects.get_or_create(
                 username=f"tg_{user_id}",
                 defaults={
-                    'first_name': full_name[:30] if full_name else '',
-                }
+                    "first_name": full_name[:30] if full_name else "",
+                },
             )
 
             # Создаем или обновляем Telegram профиль
             profile, created = TelegramProfile.objects.update_or_create(
                 telegram_id=user_id,
                 defaults={
-                    'user': django_user,
-                    'username': username or '',
-                    'first_name': full_name or '',
-                }
+                    "user": django_user,
+                    "username": username or "",
+                    "first_name": full_name or "",
+                },
             )
 
             # Если нет подписки, назначаем free
             if not profile.current_subscription:
-                free_subscription = Subscription.objects.get(code='free')
+                free_subscription = Subscription.objects.get(code="free")
                 profile.current_subscription = free_subscription
                 profile.save()
                 logger.info(f"Assigned free subscription to user {user_id}")
@@ -61,7 +67,9 @@ class DjangoStorage:
     def get_user(self, user_id: int) -> Optional[TelegramProfile]:
         """Получение пользователя Telegram по ID"""
         try:
-            return TelegramProfile.objects.select_related('user').get(telegram_id=user_id)
+            return TelegramProfile.objects.select_related("user").get(
+                telegram_id=user_id
+            )
         except TelegramProfile.DoesNotExist:
             return None
         except Exception as e:
@@ -76,8 +84,7 @@ class DjangoStorage:
         try:
             # Получаем или создаем тип состояния
             state_type, created = StateType.objects.get_or_create(
-                state_name=state_name,
-                defaults={'description': description}
+                state_name=state_name, defaults={"description": description}
             )
 
             # Получаем профиль пользователя
@@ -88,10 +95,7 @@ class DjangoStorage:
                 return
 
             # Создаем запись состояния пользователя
-            UserState.objects.create(
-                telegram_profile=profile,
-                state_type=state_type
-            )
+            UserState.objects.create(telegram_profile=profile, state_type=state_type)
 
         except Exception as e:
             logger.error(f"Ошибка добавления состояния пользователя: {e}")
@@ -101,7 +105,9 @@ class DjangoStorage:
     def is_staff(self, user_id: int) -> bool:
         """Проверка, является ли пользователь staff"""
         try:
-            profile = TelegramProfile.objects.select_related('user').get(telegram_id=user_id)
+            profile = TelegramProfile.objects.select_related("user").get(
+                telegram_id=user_id
+            )
             return profile.user.is_staff
         except TelegramProfile.DoesNotExist:
             return False
@@ -123,14 +129,19 @@ class DjangoStorage:
             ).count()
 
             # Завершенные сессии (пользователи, дошедшие до work_finish)
-            completed_sessions = UserState.objects.filter(
-                state_type__state_name__icontains='work_finish'
-            ).values('telegram_profile').distinct().count()
+            completed_sessions = (
+                UserState.objects.filter(
+                    state_type__state_name__icontains="work_finish"
+                )
+                .values("telegram_profile")
+                .distinct()
+                .count()
+            )
 
             return {
                 "total_users": total_users,
                 "recent_users": recent_users,
-                "completed_sessions": completed_sessions
+                "completed_sessions": completed_sessions,
             }
 
         except Exception as e:
@@ -147,16 +158,25 @@ class DjangoStorage:
             tuple[order_id, payment_url]: ID заказа и ссылка на оплату
         """
         try:
-            logger.info(f"[PAYMENT] Starting create_payment_order for user {user_id}, plan {plan_code}")
+            logger.info(
+                f"[PAYMENT] Starting create_payment_order for user {user_id}, plan {plan_code}"
+            )
+            from asgiref.sync import async_to_sync
             from bot.services.prodamus_service import ProdamusService
 
             # Получаем тариф из БД
             try:
                 logger.info(f"[PAYMENT] Looking for subscription plan: {plan_code}")
-                subscription_plan = Subscription.objects.get(code=plan_code, is_active=True)
-                logger.info(f"[PAYMENT] Found subscription: {subscription_plan.name}, price: {subscription_plan.price}")
+                subscription_plan = Subscription.objects.get(
+                    code=plan_code, is_active=True
+                )
+                logger.info(
+                    f"[PAYMENT] Found subscription: {subscription_plan.name}, price: {subscription_plan.price}"
+                )
             except Subscription.DoesNotExist:
-                logger.error(f"[PAYMENT] Subscription plan '{plan_code}' not found or inactive")
+                logger.error(
+                    f"[PAYMENT] Subscription plan '{plan_code}' not found or inactive"
+                )
                 raise ValueError(f"Тариф '{plan_code}' не найден")
 
             # Получаем профиль пользователя
@@ -184,17 +204,17 @@ class DjangoStorage:
                 subscription_plan=subscription_plan,
                 order_id=order_id,
                 amount=subscription_plan.price,
-                status='pending'
+                status="pending",
             )
             logger.info(f"[PAYMENT] Payment record created: {payment}")
 
-            # Генерируем платежную ссылку
+            # Генерируем платежную ссылку (вызываем async метод синхронно)
             logger.info(f"[PAYMENT] Generating payment URL")
-            payment_url = prodamus.create_payment_link(
+            payment_url = async_to_sync(prodamus.create_payment_link)(
                 order_id=order_id,
                 subscription_plan=subscription_plan,
                 user_id=user_id,
-                username=username
+                username=username,
             )
             logger.info(f"[PAYMENT] Payment URL generated: {payment_url[:100]}...")
 
@@ -213,9 +233,9 @@ class DjangoStorage:
     def can_start_session(self, user_id: int) -> bool:
         """Проверка возможности начать новую сессию"""
         try:
-            profile = TelegramProfile.objects.select_related('current_subscription').get(
-                telegram_id=user_id
-            )
+            profile = TelegramProfile.objects.select_related(
+                "current_subscription"
+            ).get(telegram_id=user_id)
             return profile.can_start_session()
         except TelegramProfile.DoesNotExist:
             logger.warning(f"User {user_id} not found for session check")
@@ -231,7 +251,7 @@ class DjangoStorage:
         request_text: str,
         request_type: str,
         card_type: str,
-        card_number: int
+        card_number: int,
     ) -> None:
         """Создание новой сессии пользователя"""
         try:
@@ -243,7 +263,7 @@ class DjangoStorage:
                 request_type=request_type,
                 card_type=card_type,
                 card_number=card_number,
-                started_at=timezone.now()
+                started_at=timezone.now(),
             )
 
             logger.info(
@@ -264,10 +284,13 @@ class DjangoStorage:
             profile = TelegramProfile.objects.get(telegram_id=user_id)
 
             # Находим последнюю незавершенную сессию
-            session = UserSession.objects.filter(
-                telegram_profile=profile,
-                completed_at__isnull=True
-            ).order_by('-started_at').first()
+            session = (
+                UserSession.objects.filter(
+                    telegram_profile=profile, completed_at__isnull=True
+                )
+                .order_by("-started_at")
+                .first()
+            )
 
             if session:
                 session.completed_at = timezone.now()
@@ -290,7 +313,7 @@ class DjangoStorage:
             int: лимит для free (10)
             None: без ограничений для premium
         """
-        profile = TelegramProfile.objects.select_related('current_subscription').get(
+        profile = TelegramProfile.objects.select_related("current_subscription").get(
             telegram_id=user_id
         )
         return profile.get_available_card_count()
