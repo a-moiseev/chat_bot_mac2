@@ -116,15 +116,32 @@ class TestPaymentFlow:
     @pytest.mark.asyncio
     async def test_create_payment_order(self, free_subscription, premium_subscription):
         """Создание заказа на оплату"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         storage = DjangoStorage()
 
         # Создаем пользователя
         await storage.add_user(user_id=555, username="buyer", full_name="Buyer")
 
-        # Создаем заказ
-        order_id, payment_url = await storage.create_payment_order(
-            user_id=555, plan_code="monthly", username="buyer"
-        )
+        # Мокаем ответ Prodamus
+        mock_response = MagicMock()
+        mock_response.status = 302
+        mock_response.headers = {'Location': 'https://demo.payform.ru/test123/'}
+
+        mock_post_cm = MagicMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session_instance = MagicMock()
+        mock_session_instance.post = MagicMock(return_value=mock_post_cm)
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+
+        with patch('bot.services.prodamus_service.aiohttp.ClientSession', return_value=mock_session_instance):
+            # Создаем заказ
+            order_id, payment_url = await storage.create_payment_order(
+                user_id=555, plan_code="monthly", username="buyer"
+            )
 
         # Проверяем что заказ создан
         assert order_id.startswith("ORDER_555_monthly_")

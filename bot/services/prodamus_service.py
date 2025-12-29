@@ -180,8 +180,24 @@ class ProdamusService:
                         f"[PRODAMUS API] Response headers: {dict(response.headers)}"
                     )
 
-                    # Prodamus возвращает plain text URL в теле ответа
-                    if response.status == 200:
+                    # Вариант A: Prodamus возвращает 302 redirect
+                    if response.status in [301, 302, 303, 307, 308]:
+                        payment_url = response.headers.get('Location')
+                        if not payment_url:
+                            raise ValueError("No Location header in redirect response")
+
+                        logger.info(
+                            f"[PRODAMUS API] Got redirect URL: {payment_url}\n"
+                            f"  Order: {order_id}\n"
+                            f"  Product: {subscription_plan.name}\n"
+                            f"  Price: {subscription_plan.price}₽\n"
+                            f"  Subscription: YES (recurring)"
+                        )
+
+                        return payment_url
+
+                    # Вариант B: Prodamus возвращает plain text URL в теле ответа
+                    elif response.status == 200:
                         payment_url = await response.text()
                         payment_url = payment_url.strip()  # Убираем пробелы
 
@@ -194,8 +210,9 @@ class ProdamusService:
                         )
 
                         return payment_url
+
+                    # Вариант C: Неожиданный статус
                     else:
-                        # Неожиданный статус
                         text = await response.text()
                         logger.error(
                             f"[PRODAMUS API] Unexpected status code: {response.status}"
