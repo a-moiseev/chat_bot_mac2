@@ -323,7 +323,7 @@ class TestPaymentSelect:
         assert "недействительна" in content
 
     def test_payment_select_user_not_found(self):
-        """Несуществующий пользователь показывает ошибку"""
+        """Несуществующий пользователь показывает generic ошибку (user enumeration prevention)"""
         # Генерируем токен для несуществующего пользователя
         token = generate_payment_token(999999999, "nonexistent")
 
@@ -332,7 +332,8 @@ class TestPaymentSelect:
 
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        assert "не найден" in content
+        # Generic error to prevent user enumeration
+        assert "недействительна" in content
 
     def test_payment_select_shows_plans(self, telegram_profile, premium_subscription):
         """Страница показывает доступные тарифы"""
@@ -431,7 +432,7 @@ class TestPaymentProcess:
         assert "не найден" in content
 
     def test_payment_process_user_not_found(self):
-        """Несуществующий пользователь показывает ошибку"""
+        """Несуществующий пользователь показывает generic ошибку (user enumeration prevention)"""
         token = generate_payment_token(999999999, "nonexistent")
 
         client = Client()
@@ -439,7 +440,8 @@ class TestPaymentProcess:
 
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        assert "не найден" in content
+        # Generic error to prevent user enumeration
+        assert "недействительна" in content
 
     def test_payment_process_creates_payment_record(
         self, telegram_profile, premium_subscription
@@ -451,9 +453,9 @@ class TestPaymentProcess:
 
         initial_count = Payment.objects.count()
 
-        # Мокаем создание ссылки на оплату
+        # Мокаем создание ссылки на оплату (используем валидный домен)
         with patch("bot.views.async_to_sync") as mock_async:
-            mock_async.return_value = lambda **kwargs: "https://prodamus.test/pay"
+            mock_async.return_value = lambda **kwargs: "https://payform.ru/pay/123"
 
             client = Client()
             response = client.post(
@@ -477,7 +479,7 @@ class TestPaymentProcess:
             telegram_profile.telegram_id, telegram_profile.username
         )
 
-        prodamus_url = "https://prodamus.test/pay/123"
+        prodamus_url = "https://demo.payform.ru/pay/123"
 
         with patch("bot.views.async_to_sync") as mock_async:
             mock_async.return_value = lambda **kwargs: prodamus_url
@@ -528,3 +530,30 @@ class TestPaymentProcess:
         response = client.get(f"/payment/process/{token}/")
 
         assert response.status_code == 405
+
+    def test_payment_process_rejects_invalid_redirect_domain(
+        self, telegram_profile, premium_subscription
+    ):
+        """Open redirect prevention: отклоняет редирект на неизвестный домен"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        # Злоумышленник подменил URL на фишинговый сайт
+        malicious_url = "https://evil-phishing.com/fake-payment"
+
+        with patch("bot.views.async_to_sync") as mock_async:
+            mock_async.return_value = lambda **kwargs: malicious_url
+
+            client = Client()
+            response = client.post(
+                f"/payment/process/{token}/", {"plan_code": premium_subscription.code}
+            )
+
+        # Не должен редиректить на вредоносный URL
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert "Ошибка" in content
+
+        # Платеж должен быть удален
+        assert Payment.objects.count() == 0

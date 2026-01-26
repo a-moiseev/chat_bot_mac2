@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 from django.core import signing
 
 from bot.services.payment_token import (
@@ -97,9 +96,9 @@ class TestValidatePaymentToken:
         data = validate_payment_token("")
         assert data is None
 
-    def test_token_max_age_is_30_minutes(self):
-        """Срок действия токена должен быть 30 минут"""
-        assert PAYMENT_TOKEN_MAX_AGE == 30 * 60  # 1800 секунд
+    def test_token_max_age_is_5_minutes(self):
+        """Срок действия токена должен быть 5 минут"""
+        assert PAYMENT_TOKEN_MAX_AGE == 5 * 60  # 300 секунд
 
 
 class TestTokenIntegration:

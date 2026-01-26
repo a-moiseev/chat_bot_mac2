@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -7,12 +8,45 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from django_ratelimit.decorators import ratelimit
 
 from bot.models import Payment, Subscription, TelegramProfile
 from bot.services.payment_token import validate_payment_token
 from bot.services.prodamus_service import ProdamusService
 
 logger = logging.getLogger("mac_bot")
+
+# Allowed domains for payment redirects
+ALLOWED_PAYMENT_DOMAINS = (
+    "payform.ru",
+    "prodamus.ru",
+)
+
+
+def _render_invalid_link_error(request):
+    """Render generic error page for invalid/expired token or user not found"""
+    return render(
+        request,
+        "bot/payment_error.html",
+        {
+            "title": "Ссылка недействительна",
+            "message": "Срок действия ссылки истек или она недействительна. "
+            "Пожалуйста, запросите новую ссылку в боте командой /subscribe.",
+            "bot_url": settings.PRODAMUS_RETURN_URL,
+        },
+    )
+
+
+def _is_valid_payment_url(url: str) -> bool:
+    """Validate that payment URL belongs to allowed domains"""
+    try:
+        parsed = urlparse(url)
+        return any(
+            parsed.netloc == domain or parsed.netloc.endswith(f".{domain}")
+            for domain in ALLOWED_PAYMENT_DOMAINS
+        )
+    except Exception:
+        return False
 
 
 @csrf_exempt
@@ -167,6 +201,7 @@ def prodamus_success(request):
     return render(request, "bot/payment_success.html", context)
 
 
+@ratelimit(key="ip", rate="30/m", block=True)
 @require_GET
 def payment_select(request, token):
     """Страница выбора тарифа
@@ -177,40 +212,20 @@ def payment_select(request, token):
     # Валидация токена
     token_data = validate_payment_token(token)
     if not token_data:
-        logger.warning(f"[PAYMENT_SELECT] Invalid or expired token")
-        return render(
-            request,
-            "bot/payment_error.html",
-            {
-                "title": "Ссылка недействительна",
-                "message": "Срок действия ссылки истек или она недействительна. "
-                "Пожалуйста, запросите новую ссылку в боте командой /subscribe.",
-                "bot_url": settings.PRODAMUS_RETURN_URL,
-            },
-        )
+        logger.warning("[PAYMENT_SELECT] Invalid or expired token")
+        return _render_invalid_link_error(request)
 
     telegram_id = token_data.get("telegram_id")
     username = token_data.get("username")
 
-    logger.info(f"[PAYMENT_SELECT] User {telegram_id} (@{username}) viewing plans")
+    logger.info(f"[PAYMENT_SELECT] User {telegram_id} viewing plans")
 
     # Проверяем существование профиля
     try:
         TelegramProfile.objects.get(telegram_id=telegram_id)
     except TelegramProfile.DoesNotExist:
-        logger.error(
-            f"[PAYMENT_SELECT] Profile not found for telegram_id {telegram_id}"
-        )
-        return render(
-            request,
-            "bot/payment_error.html",
-            {
-                "title": "Пользователь не найден",
-                "message": "Ваш профиль не найден. Пожалуйста, начните работу с ботом "
-                "командой /start.",
-                "bot_url": settings.PRODAMUS_RETURN_URL,
-            },
-        )
+        logger.warning(f"[PAYMENT_SELECT] Profile not found for token")
+        return _render_invalid_link_error(request)
 
     # Получаем активные тарифы (кроме free)
     plans = (
@@ -228,6 +243,7 @@ def payment_select(request, token):
     return render(request, "bot/payment_select.html", context)
 
 
+@ratelimit(key="ip", rate="10/m", block=True)
 @require_POST
 def payment_process(request, token):
     """Обработка выбора тарифа и создание платежа
@@ -237,17 +253,8 @@ def payment_process(request, token):
     # Валидация токена
     token_data = validate_payment_token(token)
     if not token_data:
-        logger.warning(f"[PAYMENT_PROCESS] Invalid or expired token")
-        return render(
-            request,
-            "bot/payment_error.html",
-            {
-                "title": "Ссылка недействительна",
-                "message": "Срок действия ссылки истек. "
-                "Пожалуйста, запросите новую ссылку в боте командой /subscribe.",
-                "bot_url": settings.PRODAMUS_RETURN_URL,
-            },
-        )
+        logger.warning("[PAYMENT_PROCESS] Invalid or expired token")
+        return _render_invalid_link_error(request)
 
     telegram_id = token_data.get("telegram_id")
     username = token_data.get("username")
@@ -255,9 +262,7 @@ def payment_process(request, token):
     # Получаем выбранный тариф
     plan_code = request.POST.get("plan_code")
     if not plan_code:
-        logger.error(
-            f"[PAYMENT_PROCESS] No plan_code in request from user {telegram_id}"
-        )
+        logger.warning("[PAYMENT_PROCESS] No plan_code in request")
         return render(
             request,
             "bot/payment_error.html",
@@ -268,33 +273,20 @@ def payment_process(request, token):
             },
         )
 
-    logger.info(
-        f"[PAYMENT_PROCESS] User {telegram_id} (@{username}) selected plan: {plan_code}"
-    )
+    logger.info(f"[PAYMENT_PROCESS] User {telegram_id} selected plan: {plan_code}")
 
     # Проверяем существование профиля
     try:
         profile = TelegramProfile.objects.get(telegram_id=telegram_id)
     except TelegramProfile.DoesNotExist:
-        logger.error(
-            f"[PAYMENT_PROCESS] Profile not found for telegram_id {telegram_id}"
-        )
-        return render(
-            request,
-            "bot/payment_error.html",
-            {
-                "title": "Пользователь не найден",
-                "message": "Ваш профиль не найден. Пожалуйста, начните работу с ботом "
-                "командой /start.",
-                "bot_url": settings.PRODAMUS_RETURN_URL,
-            },
-        )
+        logger.warning("[PAYMENT_PROCESS] Profile not found for token")
+        return _render_invalid_link_error(request)
 
     # Получаем тарифный план
     prodamus = ProdamusService()
     subscription_plan = prodamus.get_subscription_by_code(plan_code)
     if not subscription_plan:
-        logger.error(f"[PAYMENT_PROCESS] Subscription plan not found: {plan_code}")
+        logger.warning(f"[PAYMENT_PROCESS] Invalid plan_code: {plan_code}")
         return render(
             request,
             "bot/payment_error.html",
@@ -316,7 +308,7 @@ def payment_process(request, token):
         status="pending",
     )
 
-    logger.info(f"[PAYMENT_PROCESS] Created payment {order_id} for user {telegram_id}")
+    logger.info(f"[PAYMENT_PROCESS] Created payment {order_id}")
 
     # Создаем ссылку на оплату через Prodamus
     try:
@@ -327,13 +319,26 @@ def payment_process(request, token):
             username=username,
         )
 
-        logger.info(
-            f"[PAYMENT_PROCESS] Redirecting user {telegram_id} to Prodamus: {payment_url}"
-        )
+        # Validate payment URL to prevent open redirect
+        if not _is_valid_payment_url(payment_url):
+            logger.error(f"[PAYMENT_PROCESS] Invalid payment URL domain: {payment_url}")
+            payment.delete()
+            return render(
+                request,
+                "bot/payment_error.html",
+                {
+                    "title": "Ошибка создания платежа",
+                    "message": "Не удалось создать ссылку на оплату. "
+                    "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                    "bot_url": settings.PRODAMUS_RETURN_URL,
+                },
+            )
+
+        logger.info(f"[PAYMENT_PROCESS] Redirecting to Prodamus")
         return redirect(payment_url)
 
     except Exception as e:
-        logger.exception(f"[PAYMENT_PROCESS] Failed to create payment link: {e}")
+        logger.exception("[PAYMENT_PROCESS] Failed to create payment link")
         # Удаляем созданный платеж при ошибке
         payment.delete()
         return render(

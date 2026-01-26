@@ -12,3 +12,4 @@ pytest-cov==7.0.0
 freezegun==1.5.5
 prodamuspy==1.0.2
 aiohttp==3.12.15
+django-ratelimit==4.1.0
