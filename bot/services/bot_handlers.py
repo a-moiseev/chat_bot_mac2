@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import random
-import time
 
 import yaml
 from aiogram import Bot, Dispatcher, F
@@ -31,6 +30,7 @@ from django.conf import settings
 from redis.asyncio import Redis
 
 from bot.services.bot_storage import DjangoStorage
+from bot.services.payment_token import generate_payment_token
 
 REQUEST_TYPE = ["Психотерапевтический", "Коучинговый"]
 CARD_TYPE = ["День", "Ночь"]
@@ -672,16 +672,17 @@ class MacBot:
 
 ✨ 3 сессии/день • Все 81 карта"""
 
-            # Клавиатура с выбором тарифа
-            cache_bust = int(time.time())
-            webapp_url = f"{settings.BASE_URL}/static/webapp/index.html?v={cache_bust}"
+            # Генерируем токен для защищенной ссылки на страницу выбора тарифа
+            token = generate_payment_token(user_id, username)
+            payment_url = f"{settings.BASE_URL}/payment/select/{token}/"
 
+            # Клавиатура с выбором тарифа
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
                             text="📊 Сравнить тарифы",
-                            web_app=WebAppInfo(url=webapp_url),
+                            url=payment_url,
                         )
                     ],
                     [
@@ -811,8 +812,7 @@ class MacBot:
             plan_name = plan_names.get(plan_code, plan_code)
 
             await callback.message.edit_text(
-                f"✅ Тариф: {plan_name}\n\n"
-                f"Нажмите кнопку для перехода к оплате:",
+                f"✅ Тариф: {plan_name}\n\n" f"Нажмите кнопку для перехода к оплате:",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
                         [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)]

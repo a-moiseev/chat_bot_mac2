@@ -16,10 +16,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from django.contrib import admin
-from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import path
 
 from bot import views
 
@@ -28,8 +28,13 @@ urlpatterns = [
     # Prodamus payment integration
     path("api/prodamus/webhook", views.prodamus_webhook, name="prodamus_webhook"),
     path("api/prodamus/success", views.prodamus_success, name="prodamus_success"),
+    # Payment selection pages (web-based instead of Telegram WebApp)
+    path("payment/select/<str:token>/", views.payment_select, name="payment_select"),
+    path("payment/process/<str:token>/", views.payment_process, name="payment_process"),
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.BASE_DIR / 'static')
+    urlpatterns += static(
+        settings.STATIC_URL, document_root=settings.BASE_DIR / "static"
+    )
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
