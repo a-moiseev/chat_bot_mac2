@@ -1,9 +1,12 @@
-FROM python:3.13-slim
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app
 
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN uv pip install --system --no-cache -r requirements.txt gunicorn
 
 COPY . .
 
