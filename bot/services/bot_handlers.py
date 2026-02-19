@@ -22,7 +22,6 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    WebAppInfo,
 )
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -738,50 +737,25 @@ class MacBot:
 
     async def oferta_handler(self, message: Message) -> None:
         """Обработчик команды /oferta - открывает публичную оферту"""
-        try:
-            base_url = settings.BASE_URL or "https://mac.eremenko.live"
-            oferta_url = f"{base_url}/static/oferta.html"
-
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📄 Открыть оферту", web_app=WebAppInfo(url=oferta_url)
-                        )
-                    ]
-                ]
-            )
-
-            await message.answer("📋 <b>Публичная оферта</b>", reply_markup=keyboard)
-
-        except Exception as e:
-            self.logger.error(f"Error in oferta_handler: {e}")
-            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        base_url = settings.BASE_URL or "https://mac.eremenko.live"
+        oferta_url = f"{base_url}/static/oferta.html"
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Открыть оферту", url=oferta_url)]
+            ]
+        )
+        await message.answer("Публичная оферта", reply_markup=keyboard)
 
     async def privacy_handler(self, message: Message) -> None:
         """Обработчик команды /privacy - открывает политику конфиденциальности"""
-        try:
-            base_url = settings.BASE_URL or "https://mac.eremenko.live"
-            privacy_url = f"{base_url}/static/privacy.html"
-
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="🔒 Открыть политику",
-                            web_app=WebAppInfo(url=privacy_url),
-                        )
-                    ]
-                ]
-            )
-
-            await message.answer(
-                "🔒 <b>Политика конфиденциальности</b>", reply_markup=keyboard
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error in privacy_handler: {e}")
-            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        base_url = settings.BASE_URL or "https://mac.eremenko.live"
+        privacy_url = f"{base_url}/static/privacy.html"
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Открыть политику", url=privacy_url)]
+            ]
+        )
+        await message.answer("Политика конфиденциальности", reply_markup=keyboard)
 
     async def start(self) -> None:
         """Запуск бота"""
