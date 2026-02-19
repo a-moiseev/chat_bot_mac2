@@ -203,6 +203,33 @@ def prodamus_success(request):
 
 @ratelimit(key="ip", rate="30/m", block=True)
 @require_GET
+def subscription_info(request, token):
+    """Страница информации о подписке пользователя"""
+    token_data = validate_payment_token(token)
+    if not token_data:
+        return _render_invalid_link_error(request)
+
+    telegram_id = token_data.get("telegram_id")
+    username = token_data.get("username", "")
+
+    try:
+        profile = TelegramProfile.objects.select_related("current_subscription").get(
+            telegram_id=telegram_id
+        )
+    except TelegramProfile.DoesNotExist:
+        return _render_invalid_link_error(request)
+
+    context = {
+        "token": token,
+        "username": username,
+        "profile": profile,
+        "is_premium": profile.is_subscribed,
+    }
+    return render(request, "bot/subscription_info.html", context)
+
+
+@ratelimit(key="ip", rate="30/m", block=True)
+@require_GET
 def payment_select(request, token):
     """Страница выбора тарифа
 

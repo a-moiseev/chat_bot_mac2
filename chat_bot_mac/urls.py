@@ -28,6 +28,8 @@ urlpatterns = [
     # Prodamus payment integration
     path("api/prodamus/webhook", views.prodamus_webhook, name="prodamus_webhook"),
     path("api/prodamus/success", views.prodamus_success, name="prodamus_success"),
+    # Subscription info page
+    path("subscription/info/<str:token>/", views.subscription_info, name="subscription_info"),
     # Payment selection pages (web-based instead of Telegram WebApp)
     path("payment/select/<str:token>/", views.payment_select, name="payment_select"),
     path("payment/process/<str:token>/", views.payment_process, name="payment_process"),

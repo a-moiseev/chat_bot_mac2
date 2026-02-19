@@ -401,6 +401,83 @@ class TestPaymentSelect:
 
 
 @pytest.mark.django_db
+class TestSubscriptionInfo:
+    """Тесты страницы информации о подписке"""
+
+    def test_valid_token_free_user_renders(self, telegram_profile):
+        """Страница открывается для free-пользователя"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        client = Client()
+        response = client.get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert "Ваша подписка" in content
+
+    def test_valid_token_premium_user_shows_expiry(self, subscribed_profile):
+        """Дата окончания подписки отображается для premium-пользователя"""
+        token = generate_payment_token(
+            subscribed_profile.telegram_id, subscribed_profile.username
+        )
+
+        client = Client()
+        response = client.get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        expires_str = subscribed_profile.subscription_expires_at.strftime("%d.%m.%Y")
+        assert expires_str in content
+
+    def test_free_user_sees_upgrade_button(self, telegram_profile):
+        """Free-пользователь видит кнопку 'Выбрать тариф' со ссылкой на payment_select"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        client = Client()
+        response = client.get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert "Выбрать тариф" in content
+        assert f"/payment/select/{token}/" in content
+
+    def test_invalid_token_shows_error(self):
+        """Невалидный токен показывает ошибку"""
+        client = Client()
+        response = client.get("/subscription/info/invalid_token_xyz/")
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert "недействительна" in content
+
+    def test_user_not_found_shows_error(self):
+        """Несуществующий пользователь показывает ошибку"""
+        token = generate_payment_token(999999999, "ghost")
+
+        client = Client()
+        response = client.get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert "недействительна" in content
+
+    def test_post_not_allowed(self, telegram_profile):
+        """POST метод не разрешен"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        client = Client()
+        response = client.post(f"/subscription/info/{token}/")
+
+        assert response.status_code == 405
+
+
+@pytest.mark.django_db
 class TestPaymentProcess:
     """Тесты обработки выбора тарифа"""
 

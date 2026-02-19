@@ -205,7 +205,7 @@ class TestSubscribeHandler:
             first_button = reply_markup.inline_keyboard[0][0]
             assert first_button.url is not None
             assert first_button.web_app is None
-            assert "/payment/select/" in first_button.url
+            assert "/subscription/info/" in first_button.url
 
     async def test_subscribe_handler_url_contains_valid_token(
         self, mock_message, mock_state
@@ -233,8 +233,8 @@ class TestSubscribeHandler:
             url = first_button.url
 
             # Извлекаем токен из URL
-            # URL формат: {BASE_URL}/payment/select/{token}/
-            token = url.split("/payment/select/")[1].rstrip("/")
+            # URL формат: {BASE_URL}/subscription/info/{token}/
+            token = url.split("/subscription/info/")[1].rstrip("/")
 
             # Валидируем токен
             data = validate_payment_token(token)
