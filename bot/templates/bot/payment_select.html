@@ -318,6 +318,11 @@
         document.querySelector('form').addEventListener('submit', function(e) {
             const btn = e.submitter;
             if (btn) {
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = btn.name;
+                hidden.value = btn.value;
+                this.appendChild(hidden);
                 btn.disabled = true;
                 btn.innerHTML = 'Обработка&hellip;';
             }
