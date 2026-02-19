@@ -49,6 +49,12 @@ class TelegramProfile(models.Model):
     first_name = models.CharField(max_length=255, blank=True)
     last_name = models.CharField(max_length=255, blank=True)
     language_code = models.CharField(max_length=10, default="ru")
+    email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name="Email",
+        help_text="Email для отправки чеков платежной системой",
+    )
 
     # Подписка
     current_subscription = models.ForeignKey(

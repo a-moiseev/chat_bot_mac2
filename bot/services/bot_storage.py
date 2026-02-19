@@ -149,8 +149,28 @@ class DjangoStorage:
             raise
 
     @sync_to_async
+    def update_user_email(self, user_id: int, email: str) -> bool:
+        """Обновление email пользователя"""
+        try:
+            profile = TelegramProfile.objects.get(telegram_id=user_id)
+            profile.email = email
+            profile.save(update_fields=["email", "updated_at"])
+            logger.info(f"Updated email for user {user_id}: {email}")
+            return True
+        except TelegramProfile.DoesNotExist:
+            logger.error(f"User {user_id} not found for email update")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating email for user {user_id}: {e}")
+            return False
+
+    @sync_to_async
     def create_payment_order(
-        self, user_id: int, plan_code: str, username: Optional[str] = None
+        self,
+        user_id: int,
+        plan_code: str,
+        username: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> tuple[str, str]:
         """Создание заказа на оплату подписки
 
@@ -188,6 +208,11 @@ class DjangoStorage:
                 logger.error(f"[PAYMENT] User {user_id} not found")
                 raise ValueError(f"Пользователь не найден")
 
+            # Получаем email из профиля, если не передан
+            if not email and profile.email:
+                email = profile.email
+                logger.info(f"[PAYMENT] Using email from profile: {email}")
+
             # Создаем сервис Prodamus
             logger.info(f"[PAYMENT] Creating Prodamus service")
             prodamus = ProdamusService()
@@ -205,6 +230,7 @@ class DjangoStorage:
                 order_id=order_id,
                 amount=subscription_plan.price,
                 status="pending",
+                customer_email=email,
             )
             logger.info(f"[PAYMENT] Payment record created: {payment}")
 
@@ -215,6 +241,7 @@ class DjangoStorage:
                 subscription_plan=subscription_plan,
                 user_id=user_id,
                 username=username,
+                email=email,
             )
             logger.info(f"[PAYMENT] Payment URL generated: {payment_url[:100]}...")
 

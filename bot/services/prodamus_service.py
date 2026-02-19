@@ -108,6 +108,7 @@ class ProdamusService:
         subscription_plan: Subscription,
         user_id: int,
         username: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> str:
         """Создание ссылки для оплаты через POST запрос к Prodamus API
 
@@ -116,6 +117,7 @@ class ProdamusService:
             subscription_plan: Объект тарифа из БД
             user_id: Telegram ID пользователя
             username: Telegram username (опционально)
+            email: Email пользователя для чека (опционально)
 
         Returns:
             URL для оплаты через Prodamus
@@ -126,6 +128,11 @@ class ProdamusService:
             "order_id": order_id,
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
         }
+
+        # Добавляем email для чека
+        if email:
+            payment_data["customer_email"] = email
+            logger.info(f"[PRODAMUS] Adding customer_email: {email}")
 
         # Добавляем ID подписки Prodamus для рекуррентных платежей
         if subscription_plan.prodamus_subscription_id:

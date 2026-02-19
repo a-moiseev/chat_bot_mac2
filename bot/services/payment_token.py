@@ -11,8 +11,8 @@ from django.core import signing
 
 logger = logging.getLogger("mac_bot")
 
-# Срок действия токена в секундах (5 минут)
-PAYMENT_TOKEN_MAX_AGE = 5 * 60
+# Срок действия токена в секундах (24 часа)
+PAYMENT_TOKEN_MAX_AGE = 24 * 60 * 60
 
 
 def generate_payment_token(telegram_id: int, username: Optional[str] = None) -> str:

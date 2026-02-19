@@ -9,6 +9,7 @@ class TelegramProfileAdmin(admin.ModelAdmin):
         'username',
         'first_name',
         'last_name',
+        'email',
         'current_subscription',
         'is_subscribed',
         'is_blocked',
@@ -20,13 +21,13 @@ class TelegramProfileAdmin(admin.ModelAdmin):
         'created_at',
         'language_code'
     )
-    search_fields = ('telegram_id', 'username', 'first_name', 'last_name', 'user__username')
+    search_fields = ('telegram_id', 'username', 'first_name', 'last_name', 'user__username', 'email')
     readonly_fields = ('created_at', 'updated_at', 'is_subscribed')
     ordering = ('-created_at',)
 
     fieldsets = (
         ('Telegram информация', {
-            'fields': ('user', 'telegram_id', 'username', 'first_name', 'last_name', 'language_code')
+            'fields': ('user', 'telegram_id', 'username', 'first_name', 'last_name', 'language_code', 'email')
         }),
         ('Подписка', {
             'fields': ('current_subscription', 'subscription_expires_at', 'is_subscribed')

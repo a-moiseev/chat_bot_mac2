@@ -96,9 +96,9 @@ class TestValidatePaymentToken:
         data = validate_payment_token("")
         assert data is None
 
-    def test_token_max_age_is_5_minutes(self):
-        """Срок действия токена должен быть 5 минут"""
-        assert PAYMENT_TOKEN_MAX_AGE == 5 * 60  # 300 секунд
+    def test_token_max_age_is_24_hours(self):
+        """Срок действия токена должен быть 24 часа"""
+        assert PAYMENT_TOKEN_MAX_AGE == 24 * 60 * 60
 
 
 class TestTokenIntegration:

@@ -387,16 +387,35 @@ class TestPaymentSelect:
 
         assert response.status_code == 405
 
+    def test_payment_select_sets_session(self, telegram_profile):
+        """Успешная загрузка страницы сохраняет telegram_id в сессию"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        client = Client()
+        client.get(f"/payment/select/{token}/")
+
+        assert client.session.get("payment_telegram_id") == telegram_profile.telegram_id
+        assert client.session.get("payment_username") == telegram_profile.username
+
 
 @pytest.mark.django_db
 class TestPaymentProcess:
     """Тесты обработки выбора тарифа"""
 
-    def test_payment_process_invalid_token(self):
-        """Невалидный токен показывает ошибку"""
+    def _set_session(self, client, telegram_id, username=""):
+        """Вспомогательный метод: устанавливает сессионные данные как это делает payment_select"""
+        session = client.session
+        session["payment_telegram_id"] = telegram_id
+        session["payment_username"] = username
+        session.save()
+
+    def test_payment_process_no_session_shows_error(self):
+        """Без данных сессии (страница не была открыта) показывает ошибку"""
         client = Client()
         response = client.post(
-            "/payment/process/invalid_token/", {"plan_code": "monthly"}
+            "/payment/process/any_token/", {"plan_code": "monthly"}
         )
 
         assert response.status_code == 200
@@ -410,6 +429,7 @@ class TestPaymentProcess:
         )
 
         client = Client()
+        self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
         response = client.post(f"/payment/process/{token}/", {})
 
         assert response.status_code == 200
@@ -423,8 +443,10 @@ class TestPaymentProcess:
         )
 
         client = Client()
+        self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
         response = client.post(
-            f"/payment/process/{token}/", {"plan_code": "nonexistent_plan"}
+            f"/payment/process/{token}/",
+            {"plan_code": "nonexistent_plan", "email": "test@example.com"},
         )
 
         assert response.status_code == 200
@@ -432,15 +454,15 @@ class TestPaymentProcess:
         assert "не найден" in content
 
     def test_payment_process_user_not_found(self):
-        """Несуществующий пользователь показывает generic ошибку (user enumeration prevention)"""
+        """Несуществующий пользователь в сессии показывает generic ошибку"""
         token = generate_payment_token(999999999, "nonexistent")
 
         client = Client()
+        self._set_session(client, 999999999, "nonexistent")
         response = client.post(f"/payment/process/{token}/", {"plan_code": "monthly"})
 
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        # Generic error to prevent user enumeration
         assert "недействительна" in content
 
     def test_payment_process_creates_payment_record(
@@ -453,16 +475,16 @@ class TestPaymentProcess:
 
         initial_count = Payment.objects.count()
 
-        # Мокаем создание ссылки на оплату (используем валидный домен)
         with patch("bot.views.async_to_sync") as mock_async:
             mock_async.return_value = lambda **kwargs: "https://payform.ru/pay/123"
 
             client = Client()
+            self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
             response = client.post(
-                f"/payment/process/{token}/", {"plan_code": premium_subscription.code}
+                f"/payment/process/{token}/",
+                {"plan_code": premium_subscription.code, "email": "test@example.com"},
             )
 
-        # Должен быть создан новый платеж
         assert Payment.objects.count() == initial_count + 1
 
         payment = Payment.objects.last()
@@ -485,8 +507,10 @@ class TestPaymentProcess:
             mock_async.return_value = lambda **kwargs: prodamus_url
 
             client = Client()
+            self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
             response = client.post(
-                f"/payment/process/{token}/", {"plan_code": premium_subscription.code}
+                f"/payment/process/{token}/",
+                {"plan_code": premium_subscription.code, "email": "test@example.com"},
             )
 
         assert response.status_code == 302
@@ -503,17 +527,16 @@ class TestPaymentProcess:
         initial_count = Payment.objects.count()
 
         with patch("bot.views.async_to_sync") as mock_async:
-            # Симулируем ошибку при создании ссылки
             mock_async.return_value = lambda **kwargs: (_ for _ in ()).throw(
                 Exception("Prodamus error")
             )
 
             client = Client()
+            self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
             response = client.post(
                 f"/payment/process/{token}/", {"plan_code": premium_subscription.code}
             )
 
-        # Платеж не должен быть создан (удален после ошибки)
         assert Payment.objects.count() == initial_count
 
         assert response.status_code == 200
@@ -539,21 +562,19 @@ class TestPaymentProcess:
             telegram_profile.telegram_id, telegram_profile.username
         )
 
-        # Злоумышленник подменил URL на фишинговый сайт
         malicious_url = "https://evil-phishing.com/fake-payment"
 
         with patch("bot.views.async_to_sync") as mock_async:
             mock_async.return_value = lambda **kwargs: malicious_url
 
             client = Client()
+            self._set_session(client, telegram_profile.telegram_id, telegram_profile.username)
             response = client.post(
                 f"/payment/process/{token}/", {"plan_code": premium_subscription.code}
             )
 
-        # Не должен редиректить на вредоносный URL
         assert response.status_code == 200
         content = response.content.decode("utf-8")
         assert "Ошибка" in content
 
-        # Платеж должен быть удален
         assert Payment.objects.count() == 0

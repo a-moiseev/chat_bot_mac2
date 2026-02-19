@@ -61,6 +61,7 @@ class MacStates(StatesGroup):
         "work_result_4": "Получила подсказку",
         "work_result_5": "Окончание работы и предложение консультации",
         "work_finish": "Завершение работы",
+        "waiting_email": "Ожидание ввода email для оплаты",
     }
 
     get_request = State()
@@ -81,6 +82,9 @@ class MacStates(StatesGroup):
     work_result_4 = State()
     work_result_5 = State()
     work_finish = State()
+
+    # Payment flow states
+    waiting_email = State()
 
     @classmethod
     def get_state_description(cls, state: State) -> str:
@@ -185,6 +189,12 @@ class MacBot:
         self.dp.callback_query.register(
             self.plan_callback_handler, F.data.startswith("plan_")
         )
+        self.dp.callback_query.register(
+            self.email_cancel_handler, F.data == "cancel_email"
+        )
+
+        # Email input handler for payment flow
+        self.dp.message.register(self.process_email_input, MacStates.waiting_email)
 
         self.dp.message.register(self.wait_request, MacStates.get_request)
         self.dp.message.register(
@@ -781,7 +791,9 @@ class MacBot:
                 "❌ Произошла ошибка при создании заказа. Попробуйте позже."
             )
 
-    async def plan_callback_handler(self, callback: CallbackQuery) -> None:
+    async def plan_callback_handler(
+        self, callback: CallbackQuery, state: FSMContext
+    ) -> None:
         """Обработчик выбора тарифа через inline кнопки"""
         user_id = callback.from_user.id
         username = callback.from_user.username
@@ -792,43 +804,175 @@ class MacBot:
         )
 
         try:
-            # Создаем заказ на оплату
-            self.logger.info(f"[PLAN] Creating payment order for {plan_code}...")
-            order_id, payment_url = await self.db.create_payment_order(
-                user_id=user_id, plan_code=plan_code, username=username
-            )
-            self.logger.info(
-                f"[PLAN] Payment order created: {order_id}, URL: {payment_url[:50]}..."
-            )
+            # Проверяем, есть ли у пользователя email
+            profile = await self.db.get_user(user_id)
+            user_email = await sync_to_async(lambda: profile.email if profile else None)()
 
-            # Убираем "часики" на кнопке
-            await callback.answer()
+            if not user_email:
+                # Нет email - запрашиваем его
+                self.logger.info(f"[PLAN] User {user_id} has no email, requesting...")
+                await state.update_data(pending_plan_code=plan_code)
+                await state.set_state(MacStates.waiting_email)
 
-            # Редактируем сообщение - заменяем кнопки выбора тарифа на кнопку оплаты
-            plan_names = {
-                "monthly": "Месячная (300₽)",
-                "yearly": "Годовая (3000₽)",
-            }
-            plan_name = plan_names.get(plan_code, plan_code)
+                await callback.answer()
 
-            await callback.message.edit_text(
-                f"✅ Тариф: {plan_name}\n\n" f"Нажмите кнопку для перехода к оплате:",
-                reply_markup=InlineKeyboardMarkup(
+                keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)]
+                        [
+                            InlineKeyboardButton(
+                                text="Отмена", callback_data="cancel_email"
+                            )
+                        ]
                     ]
-                ),
+                )
+
+                await callback.message.edit_text(
+                    "Введите свой e-mail.\n\n"
+                    "Это требование платежной системы для получения чека.",
+                    reply_markup=keyboard,
+                )
+                return
+
+            # Email есть - создаем заказ на оплату
+            await self._create_and_send_payment(
+                callback, user_id, username, plan_code, user_email
             )
 
         except ValueError as e:
             self.logger.error(f"ValueError in plan_callback_handler: {e}")
-            await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+            await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
         except Exception as e:
             self.logger.error(f"Error in plan_callback_handler: {e}")
             await callback.answer(
-                "❌ Произошла ошибка при создании заказа. Попробуйте позже.",
+                "Произошла ошибка при создании заказа. Попробуйте позже.",
                 show_alert=True,
             )
+
+    async def _create_and_send_payment(
+        self,
+        callback: CallbackQuery,
+        user_id: int,
+        username: str,
+        plan_code: str,
+        email: str,
+    ) -> None:
+        """Helper метод для создания платежа и отправки ссылки"""
+        self.logger.info(f"[PLAN] Creating payment order for {plan_code}...")
+        order_id, payment_url = await self.db.create_payment_order(
+            user_id=user_id, plan_code=plan_code, username=username, email=email
+        )
+        self.logger.info(
+            f"[PLAN] Payment order created: {order_id}, URL: {payment_url[:50]}..."
+        )
+
+        await callback.answer()
+
+        plan_names = {
+            "monthly": "Месячная (300 руб)",
+            "yearly": "Годовая (3000 руб)",
+        }
+        plan_name = plan_names.get(plan_code, plan_code)
+
+        await callback.message.edit_text(
+            f"Тариф: {plan_name}\n\n" f"Нажмите кнопку для перехода к оплате:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", url=payment_url)]
+                ]
+            ),
+        )
+
+    async def process_email_input(self, message: Message, state: FSMContext) -> None:
+        """Обработчик ввода email пользователем"""
+        import re
+
+        user_id = message.from_user.id
+        username = message.from_user.username
+        email = message.text.strip().lower()
+
+        self.logger.info(f"[EMAIL] User {user_id} entered email: {email}")
+
+        # Валидация формата email
+        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+        if not re.match(email_pattern, email):
+            self.logger.warning(
+                f"[EMAIL] Invalid email format from user {user_id}: {email}"
+            )
+
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Отмена", callback_data="cancel_email")]
+                ]
+            )
+
+            await message.answer(
+                "Некорректный формат email. Пожалуйста, введите действительный email адрес.\n\n"
+                "Например: example@mail.ru",
+                reply_markup=keyboard,
+            )
+            return
+
+        # Сохраняем email в профиль
+        await self.db.update_user_email(user_id, email)
+        self.logger.info(f"[EMAIL] Saved email for user {user_id}: {email}")
+
+        # Получаем сохраненный plan_code и создаем платеж
+        data = await state.get_data()
+        plan_code = data.get("pending_plan_code")
+
+        if not plan_code:
+            self.logger.error(f"[EMAIL] No pending_plan_code for user {user_id}")
+            await state.clear()
+            await message.answer(
+                "Произошла ошибка. Пожалуйста, выберите тариф заново командой /subscribe"
+            )
+            return
+
+        # Очищаем состояние
+        await state.clear()
+
+        # Создаем платеж
+        try:
+            order_id, payment_url = await self.db.create_payment_order(
+                user_id=user_id, plan_code=plan_code, username=username, email=email
+            )
+
+            plan_names = {
+                "monthly": "Месячная (300 руб)",
+                "yearly": "Годовая (3000 руб)",
+            }
+            plan_name = plan_names.get(plan_code, plan_code)
+
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", url=payment_url)]
+                ]
+            )
+
+            await message.answer(
+                f"Email сохранен: {email}\n\n"
+                f"Тариф: {plan_name}\n\n"
+                f"Нажмите кнопку для перехода к оплате:",
+                reply_markup=keyboard,
+            )
+
+        except Exception as e:
+            self.logger.error(f"[EMAIL] Error creating payment: {e}")
+            await message.answer(
+                "Произошла ошибка при создании заказа. Попробуйте позже."
+            )
+
+    async def email_cancel_handler(
+        self, callback: CallbackQuery, state: FSMContext
+    ) -> None:
+        """Обработчик отмены ввода email"""
+        await state.clear()
+        await callback.answer()
+        await callback.message.edit_text(
+            "Ввод email отменен.\n\n"
+            "Вы можете оформить подписку позже командой /subscribe"
+        )
 
     async def oferta_handler(self, message: Message) -> None:
         """Обработчик команды /oferta - открывает публичную оферту"""

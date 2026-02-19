@@ -222,10 +222,14 @@ def payment_select(request, token):
 
     # Проверяем существование профиля
     try:
-        TelegramProfile.objects.get(telegram_id=telegram_id)
+        profile = TelegramProfile.objects.get(telegram_id=telegram_id)
     except TelegramProfile.DoesNotExist:
         logger.warning(f"[PAYMENT_SELECT] Profile not found for token")
         return _render_invalid_link_error(request)
+
+    # Сохраняем данные пользователя в сессию, чтобы payment_process не требовал токен повторно
+    request.session['payment_telegram_id'] = telegram_id
+    request.session['payment_username'] = username
 
     # Получаем активные тарифы (кроме free)
     plans = (
@@ -238,6 +242,7 @@ def payment_select(request, token):
         "token": token,
         "username": username,
         "plans": plans,
+        "user_email": profile.email,
     }
 
     return render(request, "bot/payment_select.html", context)
@@ -250,14 +255,12 @@ def payment_process(request, token):
 
     Создает Payment запись в БД и перенаправляет на Prodamus для оплаты.
     """
-    # Валидация токена
-    token_data = validate_payment_token(token)
-    if not token_data:
-        logger.warning("[PAYMENT_PROCESS] Invalid or expired token")
+    # Читаем данные пользователя из сессии (установлены при открытии payment_select)
+    telegram_id = request.session.get('payment_telegram_id')
+    username = request.session.get('payment_username', '')
+    if not telegram_id:
+        logger.warning("[PAYMENT_PROCESS] No session data, token was never validated")
         return _render_invalid_link_error(request)
-
-    telegram_id = token_data.get("telegram_id")
-    username = token_data.get("username")
 
     # Получаем выбранный тариф
     plan_code = request.POST.get("plan_code")
@@ -281,6 +284,46 @@ def payment_process(request, token):
     except TelegramProfile.DoesNotExist:
         logger.warning("[PAYMENT_PROCESS] Profile not found for token")
         return _render_invalid_link_error(request)
+
+    # Получаем email из формы или профиля
+    import re
+
+    email = request.POST.get("email", "").strip().lower()
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+    if email:
+        # Валидация email если передан из формы
+        if not re.match(email_pattern, email):
+            logger.warning(f"[PAYMENT_PROCESS] Invalid email format: {email}")
+            return render(
+                request,
+                "bot/payment_error.html",
+                {
+                    "title": "Некорректный email",
+                    "message": "Пожалуйста, введите корректный email адрес.",
+                    "bot_url": settings.PRODAMUS_RETURN_URL,
+                },
+            )
+        # Сохраняем email в профиль
+        profile.email = email
+        profile.save(update_fields=["email", "updated_at"])
+        logger.info(f"[PAYMENT_PROCESS] Saved email for user {telegram_id}: {email}")
+    else:
+        # Используем email из профиля
+        email = profile.email
+
+    # Проверяем наличие email
+    if not email:
+        logger.warning(f"[PAYMENT_PROCESS] No email for user {telegram_id}")
+        return render(
+            request,
+            "bot/payment_error.html",
+            {
+                "title": "Email обязателен",
+                "message": "Пожалуйста, укажите email для получения чека.",
+                "bot_url": settings.PRODAMUS_RETURN_URL,
+            },
+        )
 
     # Получаем тарифный план
     prodamus = ProdamusService()
@@ -306,6 +349,7 @@ def payment_process(request, token):
         order_id=order_id,
         amount=subscription_plan.price,
         status="pending",
+        customer_email=email,
     )
 
     logger.info(f"[PAYMENT_PROCESS] Created payment {order_id}")
@@ -317,6 +361,7 @@ def payment_process(request, token):
             subscription_plan=subscription_plan,
             user_id=telegram_id,
             username=username,
+            email=email,
         )
 
         # Validate payment URL to prevent open redirect
