@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ваша подписка</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+        }
+
+        .card {
+            border-radius: 15px;
+        }
+
+        .feature-icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        .feature-icon.check {
+            color: #198754;
+        }
+
+        .feature-icon.premium {
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="mb-2 text-white">Ваша подписка</h1>
+            {% if username %}
+            <p class="text-white-50">@{{ username }}</p>
+            {% endif %}
+        </div>
+
+        {% if is_premium %}
+        <!-- Premium subscription card -->
+        <div class="card shadow mb-4 border-primary" style="border-width: 2px;">
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <h3 class="card-title text-primary">{{ profile.current_subscription.name }}</h3>
+                    <p class="text-muted mb-1">Активная подписка</p>
+                    {% if profile.subscription_expires_at %}
+                    <p class="mb-0">Действует до: <strong>{{ profile.subscription_expires_at|date:"d.m.Y" }}</strong></p>
+                    {% endif %}
+                </div>
+
+                <hr>
+
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <svg class="feature-icon premium" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        <strong>{{ profile.current_subscription.daily_sessions_limit }}</strong> сессии в день
+                    </li>
+                    <li class="mb-2">
+                        <svg class="feature-icon premium" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        {% if profile.current_subscription.cards_limit %}
+                            {{ profile.current_subscription.cards_limit }} карт
+                        {% else %}
+                            Все карты (полная колода)
+                        {% endif %}
+                    </li>
+                </ul>
+            </div>
+        </div>
+        {% else %}
+        <!-- Free plan card -->
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <h3 class="card-title">Бесплатный план</h3>
+                    <p class="text-muted">Текущий тариф</p>
+                </div>
+
+                <ul class="list-unstyled mb-4">
+                    <li class="mb-2">
+                        <svg class="feature-icon check" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        1 сессия в день
+                    </li>
+                    <li class="mb-2">
+                        <svg class="feature-icon check" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        20 карт (первые 10 из каждой колоды)
+                    </li>
+                </ul>
+
+                <hr>
+
+                <h5 class="text-primary mb-3">Премиум даёт:</h5>
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <svg class="feature-icon premium" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        3 сессии в день
+                    </li>
+                    <li class="mb-2">
+                        <svg class="feature-icon premium" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                        </svg>
+                        Все 81 карта (полная колода)
+                    </li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Action button -->
+        <div class="d-grid">
+            <a href="{% url 'payment_select' token=token %}" class="btn btn-light btn-lg">
+                Выбрать тариф
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center text-white-50 small mt-4">
+            <p>
+                <a href="/static/oferta.html" target="_blank" style="color: rgba(255,255,255,0.7); text-decoration: underline;">Публичная оферта</a>
+                -
+                <a href="/static/privacy.html" target="_blank" style="color: rgba(255,255,255,0.7); text-decoration: underline;">Политика конфиденциальности</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
