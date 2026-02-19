@@ -167,9 +167,9 @@
                             {% endif %}
                             {% for plan in plans %}
                             <button type="submit" name="plan_code" value="{{ plan.code }}" class="btn {% if plan.code == 'yearly' %}btn-primary{% else %}btn-outline-primary{% endif %} btn-lg btn-plan">
-                                {{ plan.name }} - {{ plan.price|floatformat:0 }} руб.
+                                {% if plan.code == 'yearly' %}Год{% else %}Месяц{% endif %} — {{ plan.price|floatformat:0 }} ₽
                                 {% if plan.code == 'yearly' %}
-                                <span class="badge bg-success ms-1">скидка 17%</span>
+                                <span class="badge bg-success ms-1">−17%</span>
                                 {% endif %}
                             </button>
                             {% endfor %}

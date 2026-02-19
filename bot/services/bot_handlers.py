@@ -630,51 +630,29 @@ class MacBot:
                 expires_at = await sync_to_async(
                     lambda: profile.subscription_expires_at
                 )()
-                if expires_at:
-                    # Пользователь уже premium
-                    expires_date = expires_at.strftime("%d.%m.%Y")
-                    sub_name = await sync_to_async(lambda: current_sub.name)()
-                    sub_price = await sync_to_async(lambda: current_sub.price)()
-                    daily_limit = await sync_to_async(
-                        lambda: current_sub.daily_sessions_limit
-                    )()
-                    cards_limit = await sync_to_async(lambda: current_sub.cards_limit)()
-                    cards_text = (
-                        "Все 81 карта" if cards_limit is None else f"{cards_limit} карт"
-                    )
-
-                    msg = f"""✨ <b>Ваша подписка</b>
-
-📋 Тариф: <b>{sub_name}</b>
-💰 Стоимость: {sub_price}₽
-📅 Действует до: <b>{expires_date}</b>
-
-⚡️ Доступные возможности:
-• {daily_limit} сессии в день
-• {cards_text} (полная колода)
-
-Для продления подписки выберите тариф ниже."""
-                else:
+                if not expires_at:
                     is_premium = False
 
-            if not is_premium:
-                # Free пользователь
-                msg = """Выберите тариф:
-
-💳 Месячная - 300₽
-💎 Годовая - 3000₽ (-17%)
-
-✨ 3 сессии/день • Все 81 карта"""
-
-            # Генерируем токен для защищенной ссылки на страницу подписки
+            # Генерируем токен для защищенных ссылок
             token = generate_payment_token(user_id, username)
             info_url = f"{settings.BASE_URL}/subscription/info/{token}/"
+            payment_url = f"{settings.BASE_URL}/payment/select/{token}/"
 
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="Управление подпиской", url=info_url)]
-                ]
-            )
+            if is_premium:
+                msg = "Информация о вашей подписке — в кнопке ниже."
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Информация о подписке", url=info_url)]
+                    ]
+                )
+            else:
+                msg = "Управляйте подпиской или откройте полный доступ:"
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Информация о подписке", url=info_url)],
+                        [InlineKeyboardButton(text="Открыть полный доступ", url=payment_url)],
+                    ]
+                )
 
             self.logger.info(
                 f"[SUBSCRIBE] Sending subscription options to user {user_id}"

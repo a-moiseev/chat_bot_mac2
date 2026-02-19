@@ -65,14 +65,6 @@ def prodamus_webhook(request):
         # Парсим данные из POST запроса
         data = request.POST.dict()
 
-        # Детальное логирование webhook
-        logger.info("[PRODAMUS WEBHOOK] Received webhook")
-        logger.info(f"[PRODAMUS WEBHOOK] Headers: {dict(request.headers)}")
-        logger.info(f"[PRODAMUS WEBHOOK] Body: {data}")
-        logger.info(
-            f"[PRODAMUS WEBHOOK] Signature: {data.get('signature', 'NO SIGNATURE')}"
-        )
-
         # Извлекаем ключевые параметры
         order_id = data.get("order_id")
         payment_status = data.get("payment_status", "").lower()
@@ -90,16 +82,13 @@ def prodamus_webhook(request):
         service = ProdamusService()
         is_valid = service.verify_webhook_signature(data, signature)
 
-        if is_valid:
-            logger.info(f"[PRODAMUS WEBHOOK] Signature VALID for order {order_id}")
-        else:
-            logger.warning(f"[PRODAMUS WEBHOOK] Signature INVALID for order {order_id}")
+        if not is_valid:
+            logger.warning(f"[PRODAMUS WEBHOOK] Invalid signature for order {order_id}")
             return JsonResponse({"error": "Invalid signature"}, status=403)
 
         # Поиск или создание Payment записи
         try:
             payment = Payment.objects.get(order_id=order_id)
-            logger.info(f"Found existing payment: {order_id}")
         except Payment.DoesNotExist:
             # Если платеж не найден, пытаемся создать (на случай race condition)
             if not customer_extra:
@@ -245,8 +234,6 @@ def payment_select(request, token):
     telegram_id = token_data.get("telegram_id")
     username = token_data.get("username")
 
-    logger.info(f"[PAYMENT_SELECT] User {telegram_id} viewing plans")
-
     # Проверяем существование профиля
     try:
         profile = TelegramProfile.objects.get(telegram_id=telegram_id)
@@ -321,7 +308,7 @@ def payment_process(request, token):
     if email:
         # Валидация email если передан из формы
         if not re.match(email_pattern, email):
-            logger.warning(f"[PAYMENT_PROCESS] Invalid email format: {email}")
+            logger.warning(f"[PAYMENT_PROCESS] Invalid email format for user {telegram_id}")
             return render(
                 request,
                 "bot/payment_error.html",
@@ -334,7 +321,7 @@ def payment_process(request, token):
         # Сохраняем email в профиль
         profile.email = email
         profile.save(update_fields=["email", "updated_at"])
-        logger.info(f"[PAYMENT_PROCESS] Saved email for user {telegram_id}: {email}")
+        logger.info(f"[PAYMENT_PROCESS] Saved email for user {telegram_id}")
     else:
         # Используем email из профиля
         email = profile.email
@@ -393,7 +380,7 @@ def payment_process(request, token):
 
         # Validate payment URL to prevent open redirect
         if not _is_valid_payment_url(payment_url):
-            logger.error(f"[PAYMENT_PROCESS] Invalid payment URL domain: {payment_url}")
+            logger.error(f"[PAYMENT_PROCESS] Invalid payment URL domain for order {order_id}")
             payment.delete()
             return render(
                 request,

@@ -356,9 +356,9 @@ class TestPaymentSelect:
 
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        # Проверяем что оба тарифа отображаются
-        assert premium_subscription.name in content
-        assert yearly.name in content
+        # Проверяем что оба тарифа отображаются (по code в value кнопки)
+        assert 'value="monthly"' in content
+        assert 'value="yearly"' in content
 
     def test_payment_select_excludes_free_plan(
         self, telegram_profile, free_subscription

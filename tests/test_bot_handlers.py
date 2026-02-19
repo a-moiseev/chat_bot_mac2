@@ -281,4 +281,4 @@ class TestSubscribeHandler:
                 else call_args.kwargs.get("text", "")
             )
 
-            assert "Премиум" in message_text or "подписка" in message_text.lower()
+            assert "подписк" in message_text.lower()
