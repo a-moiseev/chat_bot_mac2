@@ -127,6 +127,8 @@ class ProdamusService:
             "do": "link",  # Тип операции
             "order_id": order_id,
             "customer_extra": str(user_id),  # Сохраняем telegram_id для webhook
+            "urlNotification": settings.PRODAMUS_WEBHOOK_URL,
+            "urlSuccess": settings.PRODAMUS_SUCCESS_URL,
         }
 
         # Добавляем email для чека

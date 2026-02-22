@@ -220,8 +220,8 @@ Internet → Nginx (80/443) → Django (8000)
 
 ### Environment Variables
 All configuration via environment variables (no .env files in repo):
-- GitHub Secrets: SECRET_KEY, TELEGRAM_BOT_TOKEN, VPS credentials
-- GitHub Variables: ALLOWED_HOSTS, MASTER_NAME, Redis settings
+- GitHub Secrets: SECRET_KEY, TELEGRAM_BOT_TOKEN, PRODAMUS_SECRET_KEY, VPS credentials
+- GitHub Variables: ALLOWED_HOSTS, MASTER_NAME, Redis settings, PRODAMUS_MERCHANT_URL, PRODAMUS_TEST_MODE
 
 ### Bot Service
 Uses `network_mode: host` to access existing Redis on VPS localhost.
@@ -244,3 +244,48 @@ docker compose restart django bot
 6. Verify with logs
 
 See plan file for full deployment instructions.
+
+## Prodamus Payment Integration
+
+### Key Files
+- `bot/services/prodamus_service.py`: `ProdamusService` class — signing, webhook verification, payment link creation
+- `bot/views.py`: `prodamus_webhook`, `payment_select`, `payment_process` views
+- `bot/templates/bot/payment_select.html`: tariff selection page
+- `bot/templates/bot/payment_success.html`: post-payment success page
+
+### Environment Variables
+```
+PRODAMUS_MERCHANT_URL=https://demo.payform.ru/   # prod: your shop URL from Prodamus dashboard
+PRODAMUS_SECRET_KEY=<key from Prodamus dashboard>  # Settings → API → Secret key
+PRODAMUS_TEST_MODE=True   # False in production
+PRODAMUS_RETURN_URL=https://t.me/<bot_name>       # where user goes after payment
+```
+
+### Test Mode vs Production
+- `PRODAMUS_TEST_MODE=True`: code appends `"demo"` suffix to secret key automatically (`key + "demo"`). No real charges. Use `PRODAMUS_MERCHANT_URL=https://demo.payform.ru/`.
+- `PRODAMUS_TEST_MODE=False`: uses key as-is. Real charges. Use real merchant URL from dashboard.
+- `PRODAMUS_SECRET_KEY` is always the real key from the dashboard — the suffix is added by code, not manually.
+
+### Payment Flow
+1. User clicks "Открыть полный доступ" in bot → `/payment/select/<token>/`
+2. `payment_select` validates token, saves `telegram_id` to session, renders tariff page
+3. User submits form → `payment_process` creates `Payment` record, calls Prodamus API for payment link
+4. User redirected to Prodamus → pays → Prodamus calls `POST /api/prodamus/webhook`
+5. Webhook verifies HMAC signature, updates `Payment.status`, calls `profile.activate_subscription()`
+
+### Webhook Security
+- Signature verified via HMAC SHA256 (`ProdamusPy.verify()`) before any processing
+- Webhook endpoint is `@csrf_exempt` (Prodamus cannot send CSRF token)
+- Only `payform.ru` and `prodamus.ru` domains are accepted for payment redirects (open redirect prevention)
+
+### Subscription Model
+- `Subscription`: tariff definition (`code`, `price`, `duration_days`, `daily_sessions_limit`, `cards_limit`)
+- `Payment`: payment record linked to profile + subscription plan
+- `TelegramProfile.activate_subscription(plan)`: sets `current_subscription`, calculates `subscription_expires_at`
+- `TelegramProfile.is_subscribed`: property, returns True if subscription is active and not expired
+- Free plan code: `"free"`. All other active plans shown on payment page.
+
+### Button Text in payment_select.html
+Button labels are derived from `plan.code`, not `plan.name` (which is the full Prodamus product name):
+- `code == 'monthly'` → "Месяц — {price} ₽"
+- `code == 'yearly'` → "Год — {price} ₽" + "−17%" badge
