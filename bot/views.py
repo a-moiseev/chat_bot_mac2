@@ -61,6 +61,14 @@ def prodamus_webhook(request):
     - customer_extra: telegram_id пользователя
     - signature: HMAC SHA256 подпись для проверки
     """
+    logger.info(
+        f"[WEBHOOK] Incoming request: method={request.method} "
+        f"content_type={request.content_type} "
+        f"headers={dict(request.headers)}"
+    )
+    logger.info(f"[WEBHOOK] POST data: {request.POST.dict()}")
+    logger.info(f"[WEBHOOK] Body: {request.body[:2000]}")
+
     try:
         # Парсим данные из POST запроса
         data = request.POST.dict()
