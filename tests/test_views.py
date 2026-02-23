@@ -428,7 +428,7 @@ class TestSubscriptionInfo:
 
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        expires_str = subscribed_profile.subscription_expires_at.strftime("%d.%m.%Y")
+        expires_str = timezone.localtime(subscribed_profile.subscription_expires_at).strftime("%d.%m.%Y")
         assert expires_str in content
 
     def test_free_user_sees_upgrade_button(self, telegram_profile):

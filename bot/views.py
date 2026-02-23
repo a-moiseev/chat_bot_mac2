@@ -67,7 +67,6 @@ def prodamus_webhook(request):
         f"headers={dict(request.headers)}"
     )
     logger.info(f"[WEBHOOK] POST data: {request.POST.dict()}")
-    logger.info(f"[WEBHOOK] Body: {request.body[:2000]}")
 
     try:
         # Парсим данные из POST запроса
