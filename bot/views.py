@@ -49,121 +49,152 @@ def _is_valid_payment_url(url: str) -> bool:
         return False
 
 
+def _find_profile(customer_extra, prodamus_sub_id):
+    """Найти профиль по telegram_id из customer_extra или по subscription_id в платежах"""
+    try:
+        return TelegramProfile.objects.get(telegram_id=int(customer_extra))
+    except (ValueError, TypeError, TelegramProfile.DoesNotExist):
+        pass
+
+    if prodamus_sub_id:
+        try:
+            payment = (
+                Payment.objects.filter(subscription_id=prodamus_sub_id)
+                .select_related("telegram_profile")
+                .latest("created_at")
+            )
+            return payment.telegram_profile
+        except Payment.DoesNotExist:
+            pass
+
+    return None
+
+
 @csrf_exempt
 @require_POST
 def prodamus_webhook(request):
     """Обработка webhook уведомлений от Prodamus
 
-    Prodamus отправляет POST запрос с данными о платеже:
-    - order_id: уникальный ID заказа
-    - payment_status: статус платежа (success/failed/cancelled)
-    - payment_id: ID платежа в системе Prodamus
-    - customer_extra: telegram_id пользователя
-    - signature: HMAC SHA256 подпись для проверки
+    Подпись: заголовок Sign
+    Наш order_id: поле order_num
+    Тип события: subscription[type] (action/notification)
+      - action + action_code=auto_payment    → рекуррентное продление
+      - notification + notification_code:
+          activation                         → активация (пользователь или менеджер)
+          deactivation                       → деактивация
+          auto_payment_reminder              → напоминание о списании (только лог)
     """
-    logger.info(
-        f"[WEBHOOK] Incoming request: method={request.method} "
-        f"content_type={request.content_type} "
-        f"headers={dict(request.headers)}"
-    )
-    logger.info(f"[WEBHOOK] POST data: {request.POST.dict()}")
-
     try:
-        # Парсим данные из POST запроса
         data = request.POST.dict()
 
-        # Извлекаем ключевые параметры
-        order_id = data.get("order_id")
-        payment_status = data.get("payment_status", "").lower()
-        payment_id = data.get("payment_id")
-        subscription_id = data.get("subscription_id")
-        customer_extra = data.get("customer_extra")  # telegram_id
-        signature = data.get("signature")
+        logger.info(
+            f"[WEBHOOK] Incoming: order_num={data.get('order_num')!r} "
+            f"sub_type={data.get('subscription[type]')!r} "
+            f"notification_code={data.get('subscription[notification_code]')!r} "
+            f"action_code={data.get('subscription[action_code]')!r} "
+            f"sign={'present' if request.headers.get('Sign') else 'missing'}"
+        )
 
-        # Валидация обязательных полей
-        if not all([order_id, payment_status, signature]):
-            logger.error("[PRODAMUS WEBHOOK] Missing required fields in webhook data")
+        signature = request.headers.get("Sign")
+        order_num = data.get("order_num")
+        customer_extra = data.get("customer_extra", "")
+        prodamus_sub_id = data.get("subscription[id]")
+        sub_type = data.get("subscription[type]", "")
+        notification_code = data.get("subscription[notification_code]", "")
+        action_code = data.get("subscription[action_code]", "")
+        event_code = action_code if sub_type == "action" else notification_code
+
+        if not all([order_num, event_code, signature]):
+            logger.error(
+                f"[WEBHOOK] Missing required fields: "
+                f"order_num={order_num!r} event_code={event_code!r} "
+                f"signature={'present' if signature else 'missing'}"
+            )
             return JsonResponse({"error": "Missing required fields"}, status=400)
 
-        # Проверка подписи для безопасности
         service = ProdamusService()
-        is_valid = service.verify_webhook_signature(data, signature)
-
-        if not is_valid:
-            logger.warning(f"[PRODAMUS WEBHOOK] Invalid signature for order {order_id}")
+        if not service.verify_webhook_signature(data, signature):
+            logger.warning(f"[WEBHOOK] Invalid signature for order {order_num}")
             return JsonResponse({"error": "Invalid signature"}, status=403)
 
-        # Поиск или создание Payment записи
-        try:
-            payment = Payment.objects.get(order_id=order_id)
-        except Payment.DoesNotExist:
-            # Если платеж не найден, пытаемся создать (на случай race condition)
-            if not customer_extra:
-                logger.error(
-                    f"Payment {order_id} not found and no customer_extra provided"
-                )
-                return JsonResponse({"error": "Payment not found"}, status=404)
+        # Напоминание о предстоящем списании — только лог, никаких действий
+        if event_code == "auto_payment_reminder":
+            logger.info(f"[WEBHOOK] Upcoming renewal reminder for order {order_num}")
+            return JsonResponse({"status": "ok", "order_id": order_num})
 
+        # Активация подписки (первый платёж, пользователь или менеджер)
+        if event_code == "activation":
+            initiator = data.get("subscription[initiator]", "user")
             try:
-                telegram_id = int(customer_extra)
-                profile = TelegramProfile.objects.get(telegram_id=telegram_id)
-
-                # Создаем Payment запись на основе webhook данных
-                # Примечание: subscription_plan будет None, его нужно будет установить вручную
-                payment = Payment.objects.create(
-                    telegram_profile=profile,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    subscription_id=subscription_id,
-                    amount=0,  # Будет обновлено из webhook_data
-                    status="pending",
-                    webhook_data=data,
+                payment = Payment.objects.get(order_id=order_num)
+            except Payment.DoesNotExist:
+                logger.warning(
+                    f"[WEBHOOK] Payment {order_num} not found for activation "
+                    f"(initiator={initiator}), likely test data"
                 )
-                logger.warning(f"Created payment from webhook: {order_id}")
-            except (ValueError, TelegramProfile.DoesNotExist) as e:
-                logger.error(f"Cannot create payment for order {order_id}: {e}")
-                return JsonResponse({"error": "Invalid customer data"}, status=400)
+                return JsonResponse({"status": "ok", "order_id": order_num})
 
-        # Обновляем статус платежа
-        old_status = payment.status
-        payment.status = payment_status
-        payment.payment_id = payment_id or payment.payment_id
-        payment.subscription_id = subscription_id or payment.subscription_id
-        payment.webhook_data = data
+            if payment.status != "success":
+                payment.paid_at = timezone.now()
+                if payment.subscription_plan:
+                    payment.telegram_profile.activate_subscription(payment.subscription_plan)
+                    logger.info(
+                        f"[WEBHOOK] Activated subscription for user "
+                        f"{payment.telegram_profile.telegram_id} "
+                        f"(initiator={initiator}, "
+                        f"expires={payment.telegram_profile.subscription_expires_at})"
+                    )
+                else:
+                    logger.error(f"[WEBHOOK] Payment {order_num} has no subscription_plan")
 
-        # При успешной оплате активируем подписку
-        if payment_status == "success" and old_status != "success":
-            payment.paid_at = timezone.now()
+            payment.status = "success"
+            payment.subscription_id = prodamus_sub_id or payment.subscription_id
+            payment.webhook_data = data
+            payment.save()
+            return JsonResponse({"status": "ok", "order_id": order_num})
 
-            # Проверяем наличие subscription_plan
-            if payment.subscription_plan:
-                profile = payment.telegram_profile
+        # Рекуррентное продление
+        if event_code == "auto_payment":
+            profile = _find_profile(customer_extra, prodamus_sub_id)
+            if profile is None:
+                logger.warning(
+                    f"[WEBHOOK] Profile not found for renewal order {order_num}, "
+                    f"customer_extra={customer_extra!r} — likely test data"
+                )
+                return JsonResponse({"status": "ok", "order_id": order_num})
 
-                # Активируем подписку
-                profile.activate_subscription(payment.subscription_plan)
-
+            if profile.current_subscription:
+                profile.extend_subscription(profile.current_subscription)
                 logger.info(
-                    f"Activated subscription for user {profile.telegram_id}: "
-                    f"{payment.subscription_plan.name} "
-                    f"(expires: {profile.subscription_expires_at})"
+                    f"[WEBHOOK] Extended subscription for user {profile.telegram_id}: "
+                    f"{profile.current_subscription.name} "
+                    f"(expires={profile.subscription_expires_at})"
                 )
             else:
-                logger.error(f"Payment {order_id} has no subscription_plan set")
+                logger.error(
+                    f"[WEBHOOK] No current subscription to extend for user {profile.telegram_id}"
+                )
+            return JsonResponse({"status": "ok", "order_id": order_num})
 
-        payment.save()
+        # Деактивация подписки
+        if event_code == "deactivation":
+            profile = _find_profile(customer_extra, prodamus_sub_id)
+            if profile is None:
+                logger.warning(
+                    f"[WEBHOOK] Profile not found for deactivation order {order_num}, "
+                    f"customer_extra={customer_extra!r} — likely test data"
+                )
+                return JsonResponse({"status": "ok", "order_id": order_num})
 
-        logger.info(
-            f"Processed webhook for order {order_id}: "
-            f"{old_status} -> {payment_status}"
-        )
+            profile.deactivate_subscription()
+            logger.info(f"[WEBHOOK] Deactivated subscription for user {profile.telegram_id}")
+            return JsonResponse({"status": "ok", "order_id": order_num})
 
-        # Возвращаем успешный ответ Prodamus
-        return JsonResponse(
-            {"status": "ok", "order_id": order_id, "payment_status": payment_status}
-        )
+        logger.warning(f"[WEBHOOK] Unknown event_code={event_code!r} for order {order_num}")
+        return JsonResponse({"status": "ok", "order_id": order_num})
 
     except Exception as e:
-        logger.exception(f"Error processing webhook: {e}")
+        logger.exception(f"[WEBHOOK] Error processing webhook: {e}")
         return JsonResponse({"error": "Internal server error"}, status=500)
 
 

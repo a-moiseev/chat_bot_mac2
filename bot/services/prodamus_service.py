@@ -33,17 +33,8 @@ class ProdamusService:
         self.prodamus_py = ProdamusPy(secret=secret_key)
 
     def generate_order_id(self, user_id: int, plan_code: str) -> str:
-        """Генерация уникального ID заказа
-
-        Args:
-            user_id: Telegram ID пользователя
-            plan_code: Код тарифа (free/monthly/yearly)
-
-        Returns:
-            Уникальный order_id формата: ORDER_{user_id}_{plan}_{uuid}
-        """
-        unique_id = uuid.uuid4().hex[:8]
-        order_id = f"ORDER_{user_id}_{plan_code}_{unique_id}"
+        unique_id = uuid.uuid4().hex[:6]
+        order_id = f"{user_id}-{unique_id}"
         logger.info(f"Generated order_id: {order_id}")
         return order_id
 

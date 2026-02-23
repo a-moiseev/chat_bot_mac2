@@ -13,23 +13,21 @@ from bot.services.prodamus_service import ProdamusService
 class TestProdamusWebhook:
     """Тесты webhook обработчика Prodamus"""
 
+    def _post_webhook(self, client, data, signature):
+        """Отправить webhook с подписью в заголовке Sign"""
+        return client.post("/api/prodamus/webhook", data, HTTP_SIGN=signature)
+
     def test_webhook_missing_fields(self):
         """Проверка валидации обязательных полей"""
         client = Client()
-        response = client.post(
-            "/api/prodamus/webhook",
-            {
-                "order_id": "ORDER_123",
-                # Отсутствуют payment_status и signature
-            },
-        )
+        # Нет order_num и нет заголовка Sign
+        response = client.post("/api/prodamus/webhook", {"order_num": "ORDER_123"})
         assert response.status_code == 400
         assert "error" in response.json()
 
     def test_webhook_invalid_signature(self, telegram_profile, premium_subscription):
         """Проверка отклонения невалидной подписи"""
-        # Создаем платеж
-        payment = Payment.objects.create(
+        Payment.objects.create(
             telegram_profile=telegram_profile,
             subscription_plan=premium_subscription,
             order_id="ORDER_123_monthly_abc",
@@ -38,38 +36,33 @@ class TestProdamusWebhook:
         )
 
         client = Client()
-        response = client.post(
-            "/api/prodamus/webhook",
-            {
-                "order_id": payment.order_id,
-                "payment_status": "success",
-                "signature": "invalid_signature_12345",
-            },
-        )
+        data = {
+            "order_num": "ORDER_123_monthly_abc",
+            "subscription[notification_code]": "activation",
+        }
+        response = self._post_webhook(client, data, "invalid_signature_12345")
 
         assert response.status_code == 403
         assert "Invalid signature" in response.json()["error"]
 
-    def test_webhook_payment_not_found(self):
-        """Проверка обработки несуществующего платежа"""
+    def test_webhook_payment_not_found_returns_ok(self):
+        """Activation с неизвестным order_num возвращает 200 (тестовые данные Prodamus)"""
         service = ProdamusService()
         data = {
-            "order_id": "NONEXISTENT_ORDER",
-            "payment_status": "success",
+            "order_num": "NONEXISTENT_ORDER",
+            "subscription[notification_code]": "activation",
         }
         signature = service.generate_signature(data)
 
         client = Client()
-        response = client.post(
-            "/api/prodamus/webhook", {**data, "signature": signature}
-        )
+        response = self._post_webhook(client, data, signature)
 
-        # Должен вернуть 404 так как нет customer_extra для создания нового
-        assert response.status_code == 404
+        # Возвращаем 200 чтобы Prodamus не повторял запрос
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
-    def test_webhook_success_payment(self, telegram_profile, premium_subscription):
-        """Проверка успешной обработки платежа"""
-        # Создаем платеж
+    def test_webhook_activation_by_user(self, telegram_profile, premium_subscription):
+        """Активация подписки пользователем (первый платёж)"""
         payment = Payment.objects.create(
             telegram_profile=telegram_profile,
             subscription_plan=premium_subscription,
@@ -78,73 +71,65 @@ class TestProdamusWebhook:
             status="pending",
         )
 
-        # Генерируем валидную подпись
         service = ProdamusService()
         data = {
-            "order_id": payment.order_id,
-            "payment_status": "success",
-            "payment_id": "PAY_12345",
-            "subscription_id": "SUB_12345",
+            "order_num": payment.order_id,
+            "subscription[type]": "notification",
+            "subscription[notification_code]": "activation",
+            "subscription[initiator]": "user",
+            "subscription[id]": "SUB_12345",
+            "customer_extra": str(telegram_profile.telegram_id),
         }
         signature = service.generate_signature(data)
 
-        # Отправляем webhook
-        client = Client()
-        response = client.post(
-            "/api/prodamus/webhook", {**data, "signature": signature}
-        )
+        response = self._post_webhook(Client(), data, signature)
 
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
-        # Проверяем что платеж обновился
         payment.refresh_from_db()
         assert payment.status == "success"
-        assert payment.payment_id == "PAY_12345"
         assert payment.subscription_id == "SUB_12345"
         assert payment.paid_at is not None
 
-        # Проверяем что подписка активировалась
         telegram_profile.refresh_from_db()
         assert telegram_profile.current_subscription == premium_subscription
-        assert telegram_profile.subscription_expires_at is not None
         assert telegram_profile.subscription_expires_at > timezone.now()
 
-    def test_webhook_failed_payment(self, telegram_profile, premium_subscription):
-        """Проверка обработки неудавшегося платежа"""
+    def test_webhook_activation_by_manager(self, telegram_profile, premium_subscription):
+        """Активация подписки менеджером (ручная активация в ЛК Prodamus)"""
         payment = Payment.objects.create(
             telegram_profile=telegram_profile,
             subscription_plan=premium_subscription,
-            order_id="ORDER_456_monthly_xyz",
+            order_id="ORDER_MGR_monthly_xyz",
             amount=300,
             status="pending",
         )
 
         service = ProdamusService()
         data = {
-            "order_id": payment.order_id,
-            "payment_status": "failed",
+            "order_num": payment.order_id,
+            "subscription[type]": "notification",
+            "subscription[notification_code]": "activation",
+            "subscription[initiator]": "manager",
+            "subscription[id]": "SUB_99999",
+            "customer_extra": str(telegram_profile.telegram_id),
         }
         signature = service.generate_signature(data)
 
-        client = Client()
-        response = client.post(
-            "/api/prodamus/webhook", {**data, "signature": signature}
-        )
+        response = self._post_webhook(Client(), data, signature)
 
         assert response.status_code == 200
 
-        # Проверяем что статус обновился, но подписка не активировалась
         payment.refresh_from_db()
-        assert payment.status == "failed"
-        assert payment.paid_at is None
+        assert payment.status == "success"
 
         telegram_profile.refresh_from_db()
-        assert telegram_profile.current_subscription != premium_subscription
+        assert telegram_profile.current_subscription == premium_subscription
+        assert telegram_profile.subscription_expires_at > timezone.now()
 
-    def test_webhook_duplicate_success(self, telegram_profile, premium_subscription):
-        """Проверка обработки дублирующегося успешного webhook"""
-        # Создаем уже оплаченный платеж
+    def test_webhook_duplicate_activation(self, telegram_profile, premium_subscription):
+        """Повторный activation не продлевает подписку второй раз"""
         payment = Payment.objects.create(
             telegram_profile=telegram_profile,
             subscription_plan=premium_subscription,
@@ -153,39 +138,103 @@ class TestProdamusWebhook:
             status="success",
             paid_at=timezone.now(),
         )
-
-        # Активируем подписку
         telegram_profile.activate_subscription(premium_subscription)
-        original_expires_at = telegram_profile.subscription_expires_at
+        original_expires = telegram_profile.subscription_expires_at
 
         service = ProdamusService()
         data = {
-            "order_id": payment.order_id,
-            "payment_status": "success",
+            "order_num": payment.order_id,
+            "subscription[notification_code]": "activation",
         }
         signature = service.generate_signature(data)
 
-        # Отправляем повторный webhook
-        client = Client()
-        response = client.post(
-            "/api/prodamus/webhook", {**data, "signature": signature}
-        )
+        response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        telegram_profile.refresh_from_db()
+        assert telegram_profile.subscription_expires_at == original_expires
+
+    def test_webhook_renewal(self, subscribed_profile, premium_subscription):
+        """Рекуррентное продление подписки (auto_payment)"""
+        original_expires = subscribed_profile.subscription_expires_at
+
+        service = ProdamusService()
+        data = {
+            "order_num": "ORDER_RENEWAL_001",
+            "subscription[type]": "action",
+            "subscription[action_code]": "auto_payment",
+            "subscription[id]": "SUB_RENEWAL",
+            "customer_extra": str(subscribed_profile.telegram_id),
+        }
+        signature = service.generate_signature(data)
+
+        response = self._post_webhook(Client(), data, signature)
 
         assert response.status_code == 200
 
-        # Проверяем что дата окончания не изменилась (не продлилась второй раз)
-        telegram_profile.refresh_from_db()
-        # Даты должны быть примерно одинаковые (разница < 1 секунды)
-        # Но из-за логики activate_subscription может быть небольшое отличие
-        # Просто проверим что подписка осталась активной
-        assert telegram_profile.is_subscribed is True
+        subscribed_profile.refresh_from_db()
+        expected = original_expires + timezone.timedelta(days=premium_subscription.duration_days)
+        assert subscribed_profile.subscription_expires_at == expected
+
+    def test_webhook_renewal_test_data(self):
+        """Тестовый renewal от Prodamus с нераспознаваемым customer_extra — возвращает 200"""
+        service = ProdamusService()
+        data = {
+            "order_num": "test",
+            "subscription[type]": "action",
+            "subscription[action_code]": "auto_payment",
+            "subscription[id]": "9999999999",
+            "customer_extra": "дополнительные данные",
+        }
+        signature = service.generate_signature(data)
+
+        response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+    def test_webhook_deactivation(self, subscribed_profile):
+        """Деактивация подписки"""
+        assert subscribed_profile.is_subscribed is True
+
+        service = ProdamusService()
+        data = {
+            "order_num": "ORDER_DEACT_001",
+            "subscription[type]": "notification",
+            "subscription[notification_code]": "deactivation",
+            "subscription[id]": "SUB_DEACT",
+            "customer_extra": str(subscribed_profile.telegram_id),
+        }
+        signature = service.generate_signature(data)
+
+        response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+
+        subscribed_profile.refresh_from_db()
+        assert subscribed_profile.is_subscribed is False
+
+    def test_webhook_reminder(self):
+        """Уведомление о предстоящем списании — только 200, никаких изменений"""
+        service = ProdamusService()
+        data = {
+            "order_num": "test",
+            "subscription[type]": "notification",
+            "subscription[notification_code]": "auto_payment_reminder",
+            "customer_extra": "дополнительные данные",
+        }
+        signature = service.generate_signature(data)
+
+        response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
     def test_webhook_without_subscription_plan(self, telegram_profile):
-        """Проверка обработки платежа без привязанного тарифа"""
-        # Создаем платеж БЕЗ subscription_plan
+        """Активация платежа без привязанного тарифа — webhook принят, подписка не изменена"""
         payment = Payment.objects.create(
             telegram_profile=telegram_profile,
-            subscription_plan=None,  # Явно указываем None
+            subscription_plan=None,
             order_id="ORDER_999_test",
             amount=300,
             status="pending",
@@ -193,23 +242,18 @@ class TestProdamusWebhook:
 
         service = ProdamusService()
         data = {
-            "order_id": payment.order_id,
-            "payment_status": "success",
+            "order_num": payment.order_id,
+            "subscription[notification_code]": "activation",
         }
         signature = service.generate_signature(data)
 
-        client = Client()
-        response = client.post(
-            "/api/prodamus/webhook", {**data, "signature": signature}
-        )
+        response = self._post_webhook(Client(), data, signature)
 
-        # Webhook обработан, но подписка не активирована
         assert response.status_code == 200
 
         payment.refresh_from_db()
         assert payment.status == "success"
 
-        # Подписка не должна измениться
         telegram_profile.refresh_from_db()
         assert (
             telegram_profile.current_subscription is None

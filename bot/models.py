@@ -118,7 +118,6 @@ class TelegramProfile(models.Model):
     def activate_subscription(self, subscription_plan):
         """Активировать подписку на указанный план"""
         self.current_subscription = subscription_plan
-        # Для free тарифа дата истечения не нужна
         if subscription_plan.code != "free":
             self.subscription_expires_at = timezone.now() + timedelta(
                 days=subscription_plan.duration_days
@@ -126,6 +125,21 @@ class TelegramProfile(models.Model):
         else:
             self.subscription_expires_at = None
         self.save()
+
+    def extend_subscription(self, subscription_plan):
+        """Продлить подписку (рекуррентное продление)"""
+        base = (
+            self.subscription_expires_at
+            if self.subscription_expires_at and self.subscription_expires_at > timezone.now()
+            else timezone.now()
+        )
+        self.subscription_expires_at = base + timedelta(days=subscription_plan.duration_days)
+        self.save(update_fields=["subscription_expires_at", "updated_at"])
+
+    def deactivate_subscription(self):
+        """Деактивировать подписку"""
+        self.subscription_expires_at = timezone.now()
+        self.save(update_fields=["subscription_expires_at", "updated_at"])
 
 
 class StateType(models.Model):

@@ -29,15 +29,15 @@ class TestGenerateOrderId:
     """Тесты генерации order_id"""
 
     def test_generate_order_id_format(self):
-        """Проверка формата генерируемого order_id"""
+        """Проверка формата генерируемого order_id: {user_id}-{hex6}"""
         service = ProdamusService()
         order_id = service.generate_order_id(12345, "monthly")
 
-        assert order_id.startswith("ORDER_12345_monthly_")
-        assert len(order_id.split("_")) == 4
-        # UUID часть должна быть 8 символов
-        uuid_part = order_id.split("_")[-1]
-        assert len(uuid_part) == 8
+        parts = order_id.split("-")
+        assert len(parts) == 2
+        assert parts[0] == "12345"
+        assert len(parts[1]) == 6
+        assert all(c in "0123456789abcdef" for c in parts[1])
 
     def test_generate_order_id_uniqueness(self):
         """Проверка уникальности генерируемых order_id"""
@@ -48,13 +48,13 @@ class TestGenerateOrderId:
         assert order_id_1 != order_id_2
 
     def test_generate_order_id_different_users(self):
-        """Проверка генерации для разных пользователей"""
+        """Проверка что order_id начинается с telegram_id пользователя"""
         service = ProdamusService()
         order_id_1 = service.generate_order_id(111, "monthly")
         order_id_2 = service.generate_order_id(222, "monthly")
 
-        assert "ORDER_111_" in order_id_1
-        assert "ORDER_222_" in order_id_2
+        assert order_id_1.startswith("111-")
+        assert order_id_2.startswith("222-")
 
 
 @pytest.mark.django_db

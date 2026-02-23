@@ -144,7 +144,7 @@ class TestPaymentFlow:
             )
 
         # Проверяем что заказ создан
-        assert order_id.startswith("ORDER_555_monthly_")
+        assert order_id.startswith("555-")
         assert "demo.payform.ru" in payment_url or "payform.ru" in payment_url
 
         # Проверяем Payment в БД
