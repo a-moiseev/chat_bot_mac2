@@ -13,6 +13,10 @@ from bot.services.prodamus_service import ProdamusService
 class TestProdamusWebhook:
     """Тесты webhook обработчика Prodamus"""
 
+    def _sign(self, data):
+        """Подписать плоские POST-данные как это делает Prodamus (с вложенной структурой)"""
+        return ProdamusService().sign_flat_webhook_data(data)
+
     def _post_webhook(self, client, data, signature):
         """Отправить webhook с подписью в заголовке Sign"""
         return client.post("/api/prodamus/webhook", data, HTTP_SIGN=signature)
@@ -47,12 +51,11 @@ class TestProdamusWebhook:
 
     def test_webhook_payment_not_found_returns_ok(self):
         """Activation с неизвестным order_num возвращает 200 (тестовые данные Prodamus)"""
-        service = ProdamusService()
         data = {
             "order_num": "NONEXISTENT_ORDER",
             "subscription[notification_code]": "activation",
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         client = Client()
         response = self._post_webhook(client, data, signature)
@@ -71,7 +74,6 @@ class TestProdamusWebhook:
             status="pending",
         )
 
-        service = ProdamusService()
         data = {
             "order_num": payment.order_id,
             "subscription[type]": "notification",
@@ -80,7 +82,7 @@ class TestProdamusWebhook:
             "subscription[id]": "SUB_12345",
             "customer_extra": str(telegram_profile.telegram_id),
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -106,7 +108,6 @@ class TestProdamusWebhook:
             status="pending",
         )
 
-        service = ProdamusService()
         data = {
             "order_num": payment.order_id,
             "subscription[type]": "notification",
@@ -115,7 +116,7 @@ class TestProdamusWebhook:
             "subscription[id]": "SUB_99999",
             "customer_extra": str(telegram_profile.telegram_id),
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -141,12 +142,11 @@ class TestProdamusWebhook:
         telegram_profile.activate_subscription(premium_subscription)
         original_expires = telegram_profile.subscription_expires_at
 
-        service = ProdamusService()
         data = {
             "order_num": payment.order_id,
             "subscription[notification_code]": "activation",
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -158,7 +158,6 @@ class TestProdamusWebhook:
         """Рекуррентное продление подписки (auto_payment)"""
         original_expires = subscribed_profile.subscription_expires_at
 
-        service = ProdamusService()
         data = {
             "order_num": "ORDER_RENEWAL_001",
             "subscription[type]": "action",
@@ -166,7 +165,7 @@ class TestProdamusWebhook:
             "subscription[id]": "SUB_RENEWAL",
             "customer_extra": str(subscribed_profile.telegram_id),
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -178,7 +177,6 @@ class TestProdamusWebhook:
 
     def test_webhook_renewal_test_data(self):
         """Тестовый renewal от Prodamus с нераспознаваемым customer_extra — возвращает 200"""
-        service = ProdamusService()
         data = {
             "order_num": "test",
             "subscription[type]": "action",
@@ -186,7 +184,7 @@ class TestProdamusWebhook:
             "subscription[id]": "9999999999",
             "customer_extra": "дополнительные данные",
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -197,7 +195,6 @@ class TestProdamusWebhook:
         """Деактивация подписки"""
         assert subscribed_profile.is_subscribed is True
 
-        service = ProdamusService()
         data = {
             "order_num": "ORDER_DEACT_001",
             "subscription[type]": "notification",
@@ -205,7 +202,7 @@ class TestProdamusWebhook:
             "subscription[id]": "SUB_DEACT",
             "customer_extra": str(subscribed_profile.telegram_id),
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -216,14 +213,13 @@ class TestProdamusWebhook:
 
     def test_webhook_reminder(self):
         """Уведомление о предстоящем списании — только 200, никаких изменений"""
-        service = ProdamusService()
         data = {
             "order_num": "test",
             "subscription[type]": "notification",
             "subscription[notification_code]": "auto_payment_reminder",
             "customer_extra": "дополнительные данные",
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 
@@ -240,12 +236,11 @@ class TestProdamusWebhook:
             status="pending",
         )
 
-        service = ProdamusService()
         data = {
             "order_num": payment.order_id,
             "subscription[notification_code]": "activation",
         }
-        signature = service.generate_signature(data)
+        signature = self._sign(data)
 
         response = self._post_webhook(Client(), data, signature)
 

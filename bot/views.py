@@ -104,6 +104,14 @@ def prodamus_webhook(request):
         action_code = data.get("subscription[action_code]", "")
         event_code = action_code if sub_type == "action" else notification_code
 
+        # Первый платёж может прийти без subscription-полей — только с payment_status
+        if not event_code:
+            payment_status_field = data.get("payment_status", "").lower()
+            if payment_status_field == "success":
+                event_code = "activation"
+            elif payment_status_field in ("failed", "cancelled"):
+                event_code = payment_status_field
+
         if not all([order_num, event_code, signature]):
             logger.error(
                 f"[WEBHOOK] Missing required fields: "

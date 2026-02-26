@@ -62,7 +62,22 @@ class ProdamusService:
             True если подпись валидна, False иначе
         """
         # Убираем signature из данных перед проверкой
-        data_copy = {k: v for k, v in data.items() if k != "signature"}
+        flat = {k: v for k, v in data.items() if k != "signature"}
+
+        # Prodamus подписывает вложенную структуру PHP-массива.
+        # Поля вида subscription[key] нужно собрать в nested dict,
+        # иначе JSON-сериализация не совпадёт с тем, что подписал Prodamus.
+        nested = {}
+        result = {}
+        for key, value in flat.items():
+            if key.startswith("subscription[") and key.endswith("]"):
+                sub_key = key[len("subscription["):-1]
+                nested[sub_key] = value
+            else:
+                result[key] = value
+        if nested:
+            result["subscription"] = nested
+        data_copy = result
 
         # Проверяем подпись через ProdamusPy
         is_valid = self.prodamus_py.verify(data_copy, received_signature)
@@ -73,6 +88,24 @@ class ProdamusService:
             )
 
         return is_valid
+
+    def sign_flat_webhook_data(self, flat_data: dict) -> str:
+        """Подписать плоские POST-данные webhook так же, как это делает Prodamus.
+
+        Prodamus подписывает вложенную PHP-структуру, а не плоские поля.
+        Используется в тестах для генерации корректных подписей.
+        """
+        nested = {}
+        result = {}
+        for key, value in flat_data.items():
+            if key.startswith("subscription[") and key.endswith("]"):
+                sub_key = key[len("subscription["):-1]
+                nested[sub_key] = value
+            else:
+                result[key] = value
+        if nested:
+            result["subscription"] = nested
+        return self.generate_signature(result)
 
     def get_subscription_by_code(self, plan_code: str) -> Optional[Subscription]:
         """Получение тарифа из БД по коду
