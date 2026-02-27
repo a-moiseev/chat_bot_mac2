@@ -94,6 +94,7 @@ def prodamus_webhook(request):
             f"action_code={data.get('subscription[action_code]')!r} "
             f"sign={'present' if request.headers.get('Sign') else 'missing'}"
         )
+        logger.debug(f"[WEBHOOK] Full data: {data}")
 
         signature = request.headers.get("Sign")
         order_num = data.get("order_num")

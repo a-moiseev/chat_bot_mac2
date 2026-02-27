@@ -180,13 +180,13 @@ LOGGING = {
     },
     "handlers": {
         "file": {
-            "level": "INFO",
+            "level": "DEBUG",
             "class": "logging.FileHandler",
             "filename": BASE_DIR / "bot_usage.log",
             "formatter": "verbose",
         },
         "console": {
-            "level": "INFO",
+            "level": "DEBUG",
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
@@ -194,7 +194,7 @@ LOGGING = {
     "loggers": {
         "mac_bot": {
             "handlers": ["file", "console"],
-            "level": "INFO",
+            "level": "DEBUG",
             "propagate": False,
         },
     },
