@@ -30,6 +30,7 @@ services:
       - PRODAMUS_SECRET_KEY=${PRODAMUS_SECRET_KEY}
       - PRODAMUS_TEST_MODE=${PRODAMUS_TEST_MODE:-False}
       - BASE_URL=${BASE_URL}
+      - SERVICE_NAME=django
     restart: always
 
   bot:
@@ -55,4 +56,5 @@ services:
       - PRODAMUS_SECRET_KEY=${PRODAMUS_SECRET_KEY}
       - PRODAMUS_TEST_MODE=${PRODAMUS_TEST_MODE:-False}
       - BASE_URL=${BASE_URL}
+      - SERVICE_NAME=bot
     restart: always

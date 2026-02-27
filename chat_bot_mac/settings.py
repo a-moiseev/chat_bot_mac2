@@ -182,10 +182,11 @@ LOGGING = {
     "handlers": {
         "file": {
             "level": "DEBUG",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": BASE_DIR / "logs" / "bot_usage.log",
-            "maxBytes": 10 * 1024 * 1024,  # 10 MB
-            "backupCount": 5,
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": BASE_DIR / "logs" / f"{os.getenv('SERVICE_NAME', 'bot')}.log",
+            "when": "midnight",
+            "interval": 1,
+            "backupCount": 30,
             "formatter": "verbose",
         },
         "console": {
