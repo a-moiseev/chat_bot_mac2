@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import logging.handlers
 import os
 from pathlib import Path
 
@@ -181,8 +182,10 @@ LOGGING = {
     "handlers": {
         "file": {
             "level": "DEBUG",
-            "class": "logging.FileHandler",
-            "filename": BASE_DIR / "bot_usage.log",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": BASE_DIR / "logs" / "bot_usage.log",
+            "maxBytes": 10 * 1024 * 1024,  # 10 MB
+            "backupCount": 5,
             "formatter": "verbose",
         },
         "console": {

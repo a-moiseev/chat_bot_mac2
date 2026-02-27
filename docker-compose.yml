@@ -21,6 +21,7 @@ services:
       - ./media:/app/media:ro
       - ./config:/app/config:ro
       - ./staticfiles:/app/staticfiles
+      - ./logs:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
       - SECRET_KEY=${SECRET_KEY}
@@ -39,6 +40,7 @@ services:
       - ./db.sqlite3:/app/db.sqlite3
       - ./media:/app/media:ro
       - ./config:/app/config:ro
+      - ./logs:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
       - SECRET_KEY=${SECRET_KEY}
