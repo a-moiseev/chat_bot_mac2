@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from typing import Dict, Optional
 
@@ -9,6 +10,56 @@ from prodamuspy import ProdamusPy
 from bot.models import Subscription
 
 logger = logging.getLogger("mac_bot")
+
+
+def _parse_php_form_data(flat_data: dict) -> dict:
+    """Преобразует плоские PHP form-поля в вложенную структуру.
+
+    Prodamus подписывает PHP-массив, который после сериализации в JSON
+    выглядит как nested dict/list. Django принимает его как плоские поля:
+      products[0][name]=... → {"products": [{"name": ...}]}
+      subscription[type]=... → {"subscription": {"type": ...}}
+    """
+    result = {}
+    for key, value in flat_data.items():
+        if "[" not in key:
+            result[key] = value
+            continue
+
+        # Разбиваем ключ на части: products[0][name] → ['products', '0', 'name']
+        parts = [p for p in re.split(r"\[|\]", key) if p != ""]
+        _set_nested(result, parts, value)
+    return result
+
+
+def _set_nested(container, parts, value):
+    """Рекурсивно устанавливает значение по пути из parts."""
+    key = parts[0]
+    is_int = key.isdigit()
+    typed_key = int(key) if is_int else key
+
+    if len(parts) == 1:
+        if isinstance(container, list):
+            while len(container) <= typed_key:
+                container.append(None)
+            container[typed_key] = value
+        else:
+            container[typed_key] = value
+        return
+
+    next_key = parts[1]
+    next_is_list = next_key.isdigit()
+
+    if isinstance(container, list):
+        while len(container) <= typed_key:
+            container.append(None)
+        if container[typed_key] is None:
+            container[typed_key] = [] if next_is_list else {}
+        _set_nested(container[typed_key], parts[1:], value)
+    else:
+        if typed_key not in container or container[typed_key] is None:
+            container[typed_key] = [] if next_is_list else {}
+        _set_nested(container[typed_key], parts[1:], value)
 
 
 class ProdamusService:
@@ -61,25 +112,8 @@ class ProdamusService:
         Returns:
             True если подпись валидна, False иначе
         """
-        # Убираем signature из данных перед проверкой
         flat = {k: v for k, v in data.items() if k != "signature"}
-
-        # Prodamus подписывает вложенную структуру PHP-массива.
-        # Поля вида subscription[key] нужно собрать в nested dict,
-        # иначе JSON-сериализация не совпадёт с тем, что подписал Prodamus.
-        nested = {}
-        result = {}
-        for key, value in flat.items():
-            if key.startswith("subscription[") and key.endswith("]"):
-                sub_key = key[len("subscription["):-1]
-                nested[sub_key] = value
-            else:
-                result[key] = value
-        if nested:
-            result["subscription"] = nested
-        data_copy = result
-
-        # Проверяем подпись через ProdamusPy
+        data_copy = _parse_php_form_data(flat)
         is_valid = self.prodamus_py.verify(data_copy, received_signature)
 
         if not is_valid:
@@ -92,20 +126,9 @@ class ProdamusService:
     def sign_flat_webhook_data(self, flat_data: dict) -> str:
         """Подписать плоские POST-данные webhook так же, как это делает Prodamus.
 
-        Prodamus подписывает вложенную PHP-структуру, а не плоские поля.
         Используется в тестах для генерации корректных подписей.
         """
-        nested = {}
-        result = {}
-        for key, value in flat_data.items():
-            if key.startswith("subscription[") and key.endswith("]"):
-                sub_key = key[len("subscription["):-1]
-                nested[sub_key] = value
-            else:
-                result[key] = value
-        if nested:
-            result["subscription"] = nested
-        return self.generate_signature(result)
+        return self.generate_signature(_parse_php_form_data(flat_data))
 
     def get_subscription_by_code(self, plan_code: str) -> Optional[Subscription]:
         """Получение тарифа из БД по коду
