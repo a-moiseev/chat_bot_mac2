@@ -275,6 +275,7 @@ PRODAMUS_RETURN_URL=https://t.me/<bot_name>       # where user goes after paymen
 
 ### Webhook Security
 - Signature verified via HMAC SHA256 (`ProdamusPy.verify()`) before any processing
+- **IMPORTANT**: Signature must be verified using `request.body` (raw POST data), not re-encoded dict
 - Webhook endpoint is `@csrf_exempt` (Prodamus cannot send CSRF token)
 - Only `payform.ru` and `prodamus.ru` domains are accepted for payment redirects (open redirect prevention)
 

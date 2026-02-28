@@ -110,33 +110,31 @@ class TestVerifyWebhookSignature:
     """Тесты проверки подписи webhook"""
 
     def test_verify_valid_signature(self):
-        """Проверка валидной подписи"""
+        """Проверка валидной подписи для сырого тела запроса"""
         service = ProdamusService()
-        data = {"order_id": "123", "amount": "300"}
-        signature = service.generate_signature(data)
+        raw_body = b"order_id=123&amount=300"
+        parsed = service.prodamus_py.parse(raw_body.decode())
+        signature = service.generate_signature(parsed)
 
-        is_valid = service.verify_webhook_signature(data, signature)
+        is_valid = service.verify_webhook_signature(raw_body, signature)
         assert is_valid is True
 
     def test_verify_invalid_signature(self):
         """Проверка невалидной подписи"""
         service = ProdamusService()
-        data = {"order_id": "123", "amount": "300"}
-        invalid_signature = "invalid_signature_12345"
+        raw_body = b"order_id=123&amount=300"
 
-        is_valid = service.verify_webhook_signature(data, invalid_signature)
+        is_valid = service.verify_webhook_signature(raw_body, "invalid_signature_12345")
         assert is_valid is False
 
-    def test_verify_signature_ignores_signature_field(self):
-        """Проверка что поле signature игнорируется при проверке"""
+    def test_verify_php_array_fields(self):
+        """Проверка подписи для данных с PHP-массивами (как реальный webhook)"""
         service = ProdamusService()
-        data = {"order_id": "123", "amount": "300"}
-        signature = service.generate_signature(data)
+        raw_body = b"order_num=123-abc&subscription%5Btype%5D=notification&subscription%5Bnotification_code%5D=activation"
+        parsed = service.prodamus_py.parse(raw_body.decode())
+        signature = service.generate_signature(parsed)
 
-        # Добавляем signature в данные
-        data_with_signature = {**data, "signature": signature}
-
-        is_valid = service.verify_webhook_signature(data_with_signature, signature)
+        is_valid = service.verify_webhook_signature(raw_body, signature)
         assert is_valid is True
 
 

@@ -86,17 +86,21 @@ def prodamus_webhook(request):
     """
     try:
         data = request.POST.dict()
+        signature = request.headers.get("Sign")
 
         logger.info(
             f"[WEBHOOK] Incoming: order_num={data.get('order_num')!r} "
             f"sub_type={data.get('subscription[type]')!r} "
             f"notification_code={data.get('subscription[notification_code]')!r} "
             f"action_code={data.get('subscription[action_code]')!r} "
-            f"sign={'present' if request.headers.get('Sign') else 'missing'}"
+            f"sign={'present' if signature else 'missing'}"
         )
         logger.debug(f"[WEBHOOK] Full data: {data}")
+        
+        # DEBUG: Log raw body for signature debugging (remove after fixing signature issues)
+        if settings.DEBUG:
+            logger.debug(f"[WEBHOOK] Raw body (first 500 chars): {request.body.decode('utf-8')[:500]}")
 
-        signature = request.headers.get("Sign")
         order_num = data.get("order_num")
         customer_extra = data.get("customer_extra", "")
         prodamus_sub_id = data.get("subscription[id]")
@@ -122,7 +126,7 @@ def prodamus_webhook(request):
             return JsonResponse({"error": "Missing required fields"}, status=400)
 
         service = ProdamusService()
-        if not service.verify_webhook_signature(data, signature):
+        if not service.verify_webhook_signature(request.body, signature):
             logger.warning(f"[WEBHOOK] Invalid signature for order {order_num}")
             return JsonResponse({"error": "Invalid signature"}, status=403)
 
