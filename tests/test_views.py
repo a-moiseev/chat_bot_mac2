@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import pytest
 from django.test import Client
@@ -19,7 +20,12 @@ class TestProdamusWebhook:
 
     def _post_webhook(self, client, data, signature):
         """Отправить webhook с подписью в заголовке Sign"""
-        return client.post("/api/prodamus/webhook", data, HTTP_SIGN=signature)
+        return client.post(
+            "/api/prodamus/webhook",
+            data=urlencode(data),
+            content_type="application/x-www-form-urlencoded",
+            HTTP_SIGN=signature,
+        )
 
     def test_webhook_missing_fields(self):
         """Проверка валидации обязательных полей"""

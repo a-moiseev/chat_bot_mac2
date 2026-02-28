@@ -85,6 +85,7 @@ def prodamus_webhook(request):
           auto_payment_reminder              → напоминание о списании (только лог)
     """
     try:
+        raw_body = request.body
         data = request.POST.dict()
         signature = request.headers.get("Sign")
 
@@ -99,7 +100,9 @@ def prodamus_webhook(request):
         
         # DEBUG: Log raw body for signature debugging (remove after fixing signature issues)
         if settings.DEBUG:
-            logger.debug(f"[WEBHOOK] Raw body (first 500 chars): {request.body.decode('utf-8')[:500]}")
+            logger.debug(
+                f"[WEBHOOK] Raw body (first 500 chars): {raw_body.decode('utf-8', errors='replace')[:500]}"
+            )
 
         order_num = data.get("order_num")
         customer_extra = data.get("customer_extra", "")
@@ -126,7 +129,7 @@ def prodamus_webhook(request):
             return JsonResponse({"error": "Missing required fields"}, status=400)
 
         service = ProdamusService()
-        if not service.verify_webhook_signature(request.body, signature):
+        if not service.verify_webhook_signature(raw_body, signature):
             logger.warning(f"[WEBHOOK] Invalid signature for order {order_num}")
             return JsonResponse({"error": "Invalid signature"}, status=403)
 
