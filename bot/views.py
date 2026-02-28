@@ -97,12 +97,6 @@ def prodamus_webhook(request):
             f"sign={'present' if signature else 'missing'}"
         )
         logger.debug(f"[WEBHOOK] Full data: {data}")
-        
-        # DEBUG: Log raw body for signature debugging (remove after fixing signature issues)
-        if settings.DEBUG:
-            logger.debug(
-                f"[WEBHOOK] Raw body (first 500 chars): {raw_body.decode('utf-8', errors='replace')[:500]}"
-            )
 
         order_num = data.get("order_num")
         customer_extra = data.get("customer_extra", "")

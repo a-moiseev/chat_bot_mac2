@@ -62,13 +62,21 @@ class ProdamusService:
         Returns:
             True если подпись валидна, False иначе
         """
-        data_copy = self.prodamus_py.parse(raw_body.decode("utf-8"))
-        is_valid = self.prodamus_py.verify(data_copy, received_signature)
+        body_str = raw_body.decode("utf-8")
+        data_copy = self.prodamus_py.parse(body_str)
+        computed = self.prodamus_py.sign(data_copy)
+        is_valid = computed == received_signature.lower()
 
+        # Temporary debug logging — remove after signature issue is resolved
+        logger.info(
+            f"[SIGNATURE] key={self.prodamus_py.secret[:8]}... "
+            f"body_len={len(body_str)} parsed_keys={len(data_copy)} "
+            f"received={received_signature} "
+            f"computed={computed}"
+        )
         if not is_valid:
-            logger.warning(
-                f"Invalid webhook signature. Got: {received_signature[:10]}..."
-            )
+            # Log raw body to see if POST.dict() missed any fields
+            logger.info(f"[SIGNATURE] raw_body={body_str[:1000]}")
 
         return is_valid
 
