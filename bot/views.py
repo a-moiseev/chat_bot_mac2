@@ -28,6 +28,9 @@ def _format_date_ru(dt):
 
 
 async def _notify_telegram(telegram_id: int, text: str) -> None:
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning(f"[NOTIFY] TELEGRAM_BOT_TOKEN not set, skipping notification to {telegram_id}")
+        return
     from aiogram import Bot
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
