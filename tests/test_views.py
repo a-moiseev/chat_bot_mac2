@@ -1,13 +1,16 @@
+from datetime import datetime
 from unittest.mock import patch
-from urllib.parse import urlencode
 
 import pytest
+from django.conf import settings
 from django.test import Client
 from django.utils import timezone
+from urllib.parse import urlencode
 
 from bot.models import Payment, Subscription
 from bot.services.payment_token import generate_payment_token
 from bot.services.prodamus_service import ProdamusService
+from bot.views import RU_MONTHS, _format_date_ru
 
 
 @pytest.mark.django_db
@@ -700,3 +703,210 @@ class TestPaymentProcess:
         assert "Ошибка" in content
 
         assert Payment.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestPaymentSelectRedirect:
+    """Редирект активного подписчика со страницы выбора тарифа"""
+
+    def test_active_subscriber_redirected_to_info(self, subscribed_profile):
+        """Пользователь с активной платной подпиской редиректится на subscription_info"""
+        token = generate_payment_token(
+            subscribed_profile.telegram_id, subscribed_profile.username
+        )
+
+        response = Client().get(f"/payment/select/{token}/")
+
+        assert response.status_code == 302
+        assert f"/subscription/info/{token}/" in response.url
+
+    def test_expired_subscriber_sees_payment_page(self, expired_profile):
+        """Пользователь с истёкшей подпиской видит страницу выбора (не редиректится)"""
+        token = generate_payment_token(
+            expired_profile.telegram_id, expired_profile.username
+        )
+
+        response = Client().get(f"/payment/select/{token}/")
+
+        assert response.status_code == 200
+        assert "Выбери свой тариф" in response.content.decode()
+
+    def test_free_user_sees_payment_page(self, telegram_profile):
+        """Бесплатный пользователь видит страницу выбора тарифа"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        response = Client().get(f"/payment/select/{token}/")
+
+        assert response.status_code == 200
+        assert "Выбери свой тариф" in response.content.decode()
+
+
+@pytest.mark.django_db
+class TestWebhookNotifications:
+    """Уведомления в Telegram после оплаты и продления"""
+
+    def _sign(self, data):
+        return ProdamusService().sign_flat_webhook_data(data)
+
+    def _post_webhook(self, client, data, signature):
+        return client.post(
+            "/api/prodamus/webhook",
+            data=urlencode(data),
+            content_type="application/x-www-form-urlencoded",
+            HTTP_SIGN=signature,
+        )
+
+    def _fake_async_to_sync(self, notified):
+        """Возвращает замену async_to_sync, которая записывает telegram_id в notified"""
+        def fake(coro_func):
+            def wrapper(chat_id, text):
+                notified.append(chat_id)
+            return wrapper
+        return fake
+
+    def test_activation_notifies_user(self, telegram_profile, premium_subscription):
+        """После активации пользователь получает уведомление"""
+        payment = Payment.objects.create(
+            telegram_profile=telegram_profile,
+            subscription_plan=premium_subscription,
+            order_id="ORDER_NOTIFY_USR_001",
+            amount=300,
+            status="pending",
+        )
+        data = {
+            "order_num": payment.order_id,
+            "subscription[notification_code]": "activation",
+            "subscription[initiator]": "user",
+            "customer_extra": str(telegram_profile.telegram_id),
+        }
+        signature = self._sign(data)
+
+        notified = []
+        with patch("bot.views.async_to_sync", side_effect=self._fake_async_to_sync(notified)):
+            response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert telegram_profile.telegram_id in notified
+
+    def test_activation_notifies_staff(self, telegram_profile, premium_subscription, staff_profile):
+        """После активации все staff получают уведомление"""
+        payment = Payment.objects.create(
+            telegram_profile=telegram_profile,
+            subscription_plan=premium_subscription,
+            order_id="ORDER_NOTIFY_STAFF_001",
+            amount=300,
+            status="pending",
+        )
+        data = {
+            "order_num": payment.order_id,
+            "subscription[notification_code]": "activation",
+            "subscription[initiator]": "user",
+            "customer_extra": str(telegram_profile.telegram_id),
+        }
+        signature = self._sign(data)
+
+        notified = []
+        with patch("bot.views.async_to_sync", side_effect=self._fake_async_to_sync(notified)):
+            response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert staff_profile.telegram_id in notified
+
+    def test_activation_does_not_notify_on_duplicate(self, telegram_profile, premium_subscription):
+        """Повторный activation (уже success) не отправляет уведомление"""
+        payment = Payment.objects.create(
+            telegram_profile=telegram_profile,
+            subscription_plan=premium_subscription,
+            order_id="ORDER_NOTIFY_DUP_001",
+            amount=300,
+            status="success",
+            paid_at=timezone.now(),
+        )
+        telegram_profile.activate_subscription(premium_subscription)
+
+        data = {
+            "order_num": payment.order_id,
+            "subscription[notification_code]": "activation",
+            "customer_extra": str(telegram_profile.telegram_id),
+        }
+        signature = self._sign(data)
+
+        notified = []
+        with patch("bot.views.async_to_sync", side_effect=self._fake_async_to_sync(notified)):
+            response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert telegram_profile.telegram_id not in notified
+
+    def test_renewal_notifies_user(self, subscribed_profile):
+        """После auto_payment пользователь получает уведомление о продлении"""
+        data = {
+            "order_num": "ORDER_NOTIFY_RENEWAL_001",
+            "subscription[type]": "action",
+            "subscription[action_code]": "auto_payment",
+            "subscription[id]": "SUB_RENEWAL",
+            "customer_extra": str(subscribed_profile.telegram_id),
+        }
+        signature = self._sign(data)
+
+        notified = []
+        with patch("bot.views.async_to_sync", side_effect=self._fake_async_to_sync(notified)):
+            response = self._post_webhook(Client(), data, signature)
+
+        assert response.status_code == 200
+        assert subscribed_profile.telegram_id in notified
+
+
+@pytest.mark.django_db
+class TestSubscriptionInfoCancellation:
+    """Блок отмены автопродления на странице подписки"""
+
+    def test_premium_user_sees_cancellation_note(self, subscribed_profile):
+        """Платный пользователь видит инструкцию по отмене автопродления"""
+        token = generate_payment_token(
+            subscribed_profile.telegram_id, subscribed_profile.username
+        )
+
+        response = Client().get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "автопродление" in content
+        assert settings.MASTER_NAME in content
+
+    def test_free_user_no_cancellation_note(self, telegram_profile):
+        """Free-пользователь НЕ видит блок про отмену (только для платных)"""
+        token = generate_payment_token(
+            telegram_profile.telegram_id, telegram_profile.username
+        )
+
+        response = Client().get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        # has_paid_sub=False для free пользователя — блок не рендерится
+        assert "автопродление" not in content
+
+
+class TestFormatDateRu:
+    """Утилита форматирования даты на русском"""
+
+    def test_returns_russian_month(self):
+        dt = timezone.make_aware(datetime(2026, 4, 7))
+        assert _format_date_ru(dt) == "7 апреля 2026"
+
+    def test_first_day_of_month(self):
+        dt = timezone.make_aware(datetime(2026, 1, 1))
+        assert _format_date_ru(dt) == "1 января 2026"
+
+    def test_all_months_covered(self):
+        for month, name in enumerate(RU_MONTHS, start=1):
+            dt = timezone.make_aware(datetime(2026, month, 15))
+            assert name in _format_date_ru(dt)
+
+    def test_day_without_leading_zero(self):
+        dt = timezone.make_aware(datetime(2026, 3, 7))
+        result = _format_date_ru(dt)
+        assert result.startswith("7 ")  # не "07"

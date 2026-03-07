@@ -6,6 +6,7 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -14,6 +15,32 @@ from django_ratelimit.decorators import ratelimit
 from bot.models import Payment, Subscription, TelegramProfile
 from bot.services.payment_token import validate_payment_token
 from bot.services.prodamus_service import ProdamusService
+
+RU_MONTHS = [
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+]
+
+
+def _format_date_ru(dt):
+    local_dt = timezone.localtime(dt)
+    return f"{local_dt.day} {RU_MONTHS[local_dt.month - 1]} {local_dt.year}"
+
+
+async def _notify_telegram(telegram_id: int, text: str) -> None:
+    from aiogram import Bot
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
+    bot = Bot(
+        token=settings.TELEGRAM_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    try:
+        await bot.send_message(chat_id=telegram_id, text=text)
+    except Exception as e:
+        logger.warning(f"[NOTIFY] Failed to send to {telegram_id}: {e}")
+    finally:
+        await bot.session.close()
 
 logger = logging.getLogger("mac_bot")
 
@@ -155,6 +182,30 @@ def prodamus_webhook(request):
                         f"(initiator={initiator}, "
                         f"expires={payment.telegram_profile.subscription_expires_at})"
                     )
+                    expires_str = _format_date_ru(payment.telegram_profile.subscription_expires_at)
+                    user_text = (
+                        "✅ <b>Оплата прошла успешно!</b>\n\n"
+                        "Вам открыт расширенный доступ к боту.\n"
+                        f"Подписка действует до: <b>{expires_str}</b>\n\n"
+                        "Нажмите /start чтобы начать сессию."
+                    )
+                    async_to_sync(_notify_telegram)(
+                        payment.telegram_profile.telegram_id, user_text
+                    )
+                    staff_ids = TelegramProfile.objects.filter(
+                        user__is_staff=True
+                    ).values_list("telegram_id", flat=True)
+                    tg_profile = payment.telegram_profile
+                    username_str = f"@{tg_profile.username}" if tg_profile.username else f"ID {tg_profile.telegram_id}"
+                    staff_text = (
+                        "💰 <b>Новая оплата</b>\n\n"
+                        f"Пользователь: {username_str}\n"
+                        f"Тариф: {payment.subscription_plan.name[:40]}\n"
+                        f"Сумма: {int(payment.amount)} ₽\n"
+                        f"Действует до: {expires_str}"
+                    )
+                    for staff_id in staff_ids:
+                        async_to_sync(_notify_telegram)(staff_id, staff_text)
                 else:
                     logger.error(f"[WEBHOOK] Payment {order_num} has no subscription_plan")
 
@@ -181,6 +232,13 @@ def prodamus_webhook(request):
                     f"{profile.current_subscription.name} "
                     f"(expires={profile.subscription_expires_at})"
                 )
+                expires_str = _format_date_ru(profile.subscription_expires_at)
+                renewal_text = (
+                    "✅ <b>Подписка продлена!</b>\n\n"
+                    "Расширенный доступ продлён автоматически.\n"
+                    f"Действует до: <b>{expires_str}</b>"
+                )
+                async_to_sync(_notify_telegram)(profile.telegram_id, renewal_text)
             else:
                 logger.error(
                     f"[WEBHOOK] No current subscription to extend for user {profile.telegram_id}"
@@ -304,11 +362,18 @@ def subscription_info(request, token):
     except TelegramProfile.DoesNotExist:
         return _render_invalid_link_error(request)
 
+    has_paid_sub = (
+        profile.current_subscription is not None
+        and profile.current_subscription.code != "free"
+        and profile.is_subscribed
+    )
     context = {
         "token": token,
         "username": username,
         "profile": profile,
         "is_premium": profile.is_subscribed,
+        "has_paid_sub": has_paid_sub,
+        "master_name": settings.MASTER_NAME,
     }
     return render(request, "bot/subscription_info.html", context)
 
@@ -336,6 +401,15 @@ def payment_select(request, token):
     except TelegramProfile.DoesNotExist:
         logger.warning(f"[PAYMENT_SELECT] Profile not found for token")
         return _render_invalid_link_error(request)
+
+    # Если у пользователя уже есть активная платная подписка — редиректим на страницу инфо
+    has_paid_sub = (
+        profile.current_subscription is not None
+        and profile.current_subscription.code != "free"
+        and profile.is_subscribed
+    )
+    if has_paid_sub:
+        return redirect(reverse("subscription_info", kwargs={"token": token}))
 
     # Сохраняем данные пользователя в сессию, чтобы payment_process не требовал токен повторно
     request.session['payment_telegram_id'] = telegram_id

@@ -52,7 +52,6 @@ class ProdamusService:
             HMAC SHA256 подпись в hex формате
         """
         signature = self.prodamus_py.sign(data)
-        logger.info(f"[SIGNATURE] Generated signature: {signature}")
         return signature
 
     def verify_webhook_signature(self, raw_body: bytes, received_signature: str) -> bool:
@@ -82,9 +81,7 @@ class ProdamusService:
         is_valid = computed == received_signature.lower()
 
         logger.info(
-            f"[SIGNATURE] body_len={len(body_str)} parsed_keys={len(data_copy)} "
-            f"received={received_signature} "
-            f"computed={computed} valid={is_valid}"
+            f"[SIGNATURE] body_len={len(body_str)} parsed_keys={len(data_copy)} valid={is_valid}"
         )
 
         return is_valid
@@ -147,7 +144,6 @@ class ProdamusService:
         # Добавляем email для чека
         if email:
             payment_data["customer_email"] = email
-            logger.info(f"[PRODAMUS] Adding customer_email: {email}")
 
         # Добавляем ID подписки Prodamus для рекуррентных платежей
         if subscription_plan.prodamus_subscription_id:
@@ -179,14 +175,9 @@ class ProdamusService:
             payment_data["do"] = "test"
             logger.info("[PRODAMUS] Creating payment link in TEST mode")
 
-        # Логируем параметры перед отправкой
-        logger.info(f"[PRODAMUS API] Payment data before signing: {payment_data}")
-
         # Генерируем подпись
         signature = self.generate_signature(payment_data)
         payment_data["signature"] = signature
-
-        logger.info(f"[PRODAMUS API] Generated signature: {signature[:20]}...")
 
         # Отправляем POST запрос к Prodamus
         try:
@@ -198,9 +189,6 @@ class ProdamusService:
                     allow_redirects=False,
                 ) as response:
                     logger.info(f"[PRODAMUS API] Response status: {response.status}")
-                    logger.info(
-                        f"[PRODAMUS API] Response headers: {dict(response.headers)}"
-                    )
 
                     # Вариант A: Prodamus возвращает 302 redirect
                     if response.status in [301, 302, 303, 307, 308]:

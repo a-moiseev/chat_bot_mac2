@@ -103,6 +103,19 @@ def expired_profile(db, premium_subscription):
 
 
 @pytest.fixture
+def staff_profile(db, staff_user, premium_subscription):
+    """TelegramProfile привязанный к staff-пользователю"""
+    future_date = timezone.now() + timedelta(days=30)
+    return TelegramProfile.objects.create(
+        user=staff_user,
+        telegram_id=555666777,
+        username="staff_tg_user",
+        current_subscription=premium_subscription,
+        subscription_expires_at=future_date
+    )
+
+
+@pytest.fixture
 def state_type(db):
     """Создает StateType"""
     return StateType.objects.create(

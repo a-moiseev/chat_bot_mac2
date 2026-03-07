@@ -136,7 +136,16 @@
             </a>
         </div>
 
+        {% if has_paid_sub %}
+        <!-- Cancellation note -->
+        <div class="text-muted small mt-4 text-center" style="color: rgba(255,255,255,0.6) !important;">
+            Чтобы отменить автопродление, напишите <a href="https://t.me/{{ master_name }}" style="color: rgba(255,255,255,0.8);">@{{ master_name }}</a>.<br>
+            Доступ к боту сохранится до конца оплаченного периода.
+        </div>
+        {% endif %}
+
         <!-- Footer -->
+
         <div class="text-center text-white-50 small mt-4">
             <p>
                 <a href="/static/oferta.html" target="_blank" style="color: rgba(255,255,255,0.7); text-decoration: underline;">Публичная оферта</a>
