@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
@@ -198,6 +199,53 @@ def prodamus_webhook(request):
 
             profile.deactivate_subscription()
             logger.info(f"[WEBHOOK] Deactivated subscription for user {profile.telegram_id}")
+            return JsonResponse({"status": "ok", "order_id": order_num})
+
+        # Реактивация подписки (менеджер повторно активировал в дашборде)
+        if event_code == "reactivation":
+            profile = _find_profile(customer_extra, prodamus_sub_id)
+            if profile is None:
+                logger.warning(
+                    f"[WEBHOOK] Profile not found for reactivation order {order_num}, "
+                    f"customer_extra={customer_extra!r} — likely test data"
+                )
+                return JsonResponse({"status": "ok", "order_id": order_num})
+
+            if not profile.current_subscription:
+                logger.error(
+                    f"[WEBHOOK] No current subscription to reactivate for user {profile.telegram_id}"
+                )
+                return JsonResponse({"status": "ok", "order_id": order_num})
+
+            # Use next payment date from webhook as expiry if available
+            next_payment_str = data.get("subscription[date_next_payment]", "")
+            if next_payment_str:
+                try:
+                    next_payment_dt = datetime.strptime(next_payment_str, "%Y-%m-%d %H:%M:%S")
+                    profile.subscription_expires_at = timezone.make_aware(
+                        next_payment_dt, timezone.get_current_timezone()
+                    )
+                    profile.save(update_fields=["subscription_expires_at", "updated_at"])
+                    logger.info(
+                        f"[WEBHOOK] Reactivated subscription for user {profile.telegram_id} "
+                        f"(expires={profile.subscription_expires_at})"
+                    )
+                except ValueError:
+                    logger.warning(
+                        f"[WEBHOOK] Could not parse next_payment date {next_payment_str!r}, "
+                        f"falling back to activate_subscription"
+                    )
+                    profile.activate_subscription(profile.current_subscription)
+                    logger.info(
+                        f"[WEBHOOK] Reactivated subscription for user {profile.telegram_id} "
+                        f"(expires={profile.subscription_expires_at})"
+                    )
+            else:
+                profile.activate_subscription(profile.current_subscription)
+                logger.info(
+                    f"[WEBHOOK] Reactivated subscription for user {profile.telegram_id} "
+                    f"(expires={profile.subscription_expires_at})"
+                )
             return JsonResponse({"status": "ok", "order_id": order_num})
 
         logger.warning(f"[WEBHOOK] Unknown event_code={event_code!r} for order {order_num}")

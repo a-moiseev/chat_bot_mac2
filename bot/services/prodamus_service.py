@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import logging
 import uuid
 from typing import Dict, Optional
@@ -64,19 +67,25 @@ class ProdamusService:
         """
         body_str = raw_body.decode("utf-8")
         data_copy = self.prodamus_py.parse(body_str)
-        computed = self.prodamus_py.sign(data_copy)
+
+        # Prodamus uses PHP's json_encode which escapes "/" as "\/"
+        # prodamuspy.sign() uses Python's json.dumps which does NOT escape "/"
+        # We compute HMAC manually with PHP-style slash escaping
+        signed_json = json.dumps(
+            data_copy, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        ).replace("/", "\\/")
+        computed = hmac.new(
+            self.prodamus_py.secret.encode("utf-8"),
+            signed_json.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
         is_valid = computed == received_signature.lower()
 
-        # Temporary debug logging — remove after signature issue is resolved
         logger.info(
-            f"[SIGNATURE] key={self.prodamus_py.secret[:8]}... "
-            f"body_len={len(body_str)} parsed_keys={len(data_copy)} "
+            f"[SIGNATURE] body_len={len(body_str)} parsed_keys={len(data_copy)} "
             f"received={received_signature} "
-            f"computed={computed}"
+            f"computed={computed} valid={is_valid}"
         )
-        if not is_valid:
-            # Log raw body to see if POST.dict() missed any fields
-            logger.info(f"[SIGNATURE] raw_body={body_str[:1000]}")
 
         return is_valid
 
