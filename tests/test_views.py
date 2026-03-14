@@ -863,6 +863,17 @@ class TestWebhookNotifications:
 class TestSubscriptionInfoCancellation:
     """Блок отмены автопродления на странице подписки"""
 
+    def test_premium_user_no_upgrade_button(self, subscribed_profile):
+        """Платный пользователь не видит кнопку 'Выбрать тариф'"""
+        token = generate_payment_token(
+            subscribed_profile.telegram_id, subscribed_profile.username
+        )
+
+        response = Client().get(f"/subscription/info/{token}/")
+
+        assert response.status_code == 200
+        assert "Выбрать тариф" not in response.content.decode()
+
     def test_premium_user_sees_cancellation_note(self, subscribed_profile):
         """Платный пользователь видит инструкцию по отмене автопродления"""
         token = generate_payment_token(

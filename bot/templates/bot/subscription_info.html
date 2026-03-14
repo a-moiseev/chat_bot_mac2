@@ -130,11 +130,13 @@
         {% endif %}
 
         <!-- Action button -->
+        {% if not has_paid_sub %}
         <div class="d-grid">
             <a href="{% url 'payment_select' token=token %}" class="btn btn-light btn-lg">
                 Выбрать тариф
             </a>
         </div>
+        {% endif %}
 
         {% if has_paid_sub %}
         <!-- Cancellation note -->
