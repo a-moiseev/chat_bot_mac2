@@ -9,6 +9,7 @@ services:
       - ./staticfiles:/app/staticfiles
       - ./media:/app/media
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./certbot-webroot:/var/www/certbot
     depends_on:
       - django
     restart: always
