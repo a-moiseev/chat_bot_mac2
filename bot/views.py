@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -13,6 +14,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
 from bot.models import Payment, Subscription, TelegramProfile
+from bot.services import heartbeat
 from bot.services.payment_token import validate_payment_token
 from bot.services.prodamus_service import ProdamusService
 
@@ -583,3 +585,34 @@ def payment_process(request, token):
                 "bot_url": settings.PRODAMUS_RETURN_URL,
             },
         )
+
+
+@require_GET
+def healthz(request):
+    """Liveness веб-приложения: Django отвечает и база доступна."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except Exception as e:
+        logger.error(f"Health check: база не отвечает: {e}")
+        return JsonResponse(
+            {"status": "unhealthy", "problems": ["база не отвечает"]},
+            status=503,
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    return JsonResponse({"status": "ok"})
+
+
+@require_GET
+def healthz_bot(request):
+    """Liveness процесса бота: он в отдельном контейнере и пишет пульс в общую базу."""
+    ok, details = heartbeat.check()
+    if not ok:
+        logger.warning(f"Health check бота: {details['problems']}")
+
+    return JsonResponse(
+        details,
+        status=200 if ok else 503,
+        json_dumps_params={"ensure_ascii": False},
+    )

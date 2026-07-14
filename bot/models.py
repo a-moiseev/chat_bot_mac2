@@ -296,3 +296,21 @@ class UserSession(models.Model):
 
     def __str__(self):
         return f"{self.telegram_profile.telegram_id} - {self.started_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class BotHeartbeat(models.Model):
+    """Пульс процесса бота для /healthz/bot.
+
+    Пишет контейнер бота, читает контейнер Django: база - единственное, что у них общее.
+    """
+
+    name = models.CharField(max_length=32, unique=True, verbose_name="Подсистема")
+    beat_at = models.DateTimeField(verbose_name="Время пульса")
+
+    class Meta:
+        db_table = "bot_heartbeats"
+        verbose_name = "Пульс бота"
+        verbose_name_plural = "Пульс бота"
+
+    def __str__(self):
+        return f"{self.name} - {self.beat_at.strftime('%Y-%m-%d %H:%M:%S')}"

@@ -42,6 +42,9 @@ CSRF_TRUSTED_ORIGINS = [
     f"https://{host}" for host in ALLOWED_HOSTS if host and host != "localhost"
 ]
 
+# healthcheck контейнера ходит на /healthz по 127.0.0.1, иначе Django ответит 400
+ALLOWED_HOSTS += ["127.0.0.1", "localhost"]
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Application definition

@@ -25,6 +25,9 @@ from bot import views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Liveness probes: /healthz - веб, /healthz/bot - процесс бота
+    path("healthz", views.healthz, name="healthz"),
+    path("healthz/bot", views.healthz_bot, name="healthz_bot"),
     # Prodamus payment integration
     path("api/prodamus/webhook", views.prodamus_webhook, name="prodamus_webhook"),
     path("api/prodamus/success", views.prodamus_success, name="prodamus_success"),

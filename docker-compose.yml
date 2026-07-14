@@ -33,6 +33,16 @@ services:
       - BASE_URL=${BASE_URL}
       - SERVICE_NAME=django
     restart: always
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
   bot:
     build: .
@@ -59,3 +69,10 @@ services:
       - BASE_URL=${BASE_URL}
       - SERVICE_NAME=bot
     restart: always
+    healthcheck:
+      # у бота нет HTTP: проверяем тот же пульс, что отдает /healthz/bot
+      test: ["CMD", "python", "manage.py", "healthcheck_bot"]
+      interval: 60s
+      timeout: 15s
+      start_period: 60s
+      retries: 3

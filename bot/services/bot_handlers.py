@@ -27,6 +27,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from redis.asyncio import Redis
 
+from bot.services import heartbeat
 from bot.services.bot_storage import DjangoStorage
 from bot.services.payment_token import generate_payment_token
 
@@ -761,4 +762,10 @@ class MacBot:
         """Запуск бота"""
         await self.db.init_db()
         self.logger.info("Бот запущен")
-        await self.dp.start_polling(self.bot)
+
+        # Пульс для /healthz/bot: без него залипший polling выглядит как живой процесс
+        heartbeat_task = asyncio.create_task(heartbeat.run(self.bot))
+        try:
+            await self.dp.start_polling(self.bot)
+        finally:
+            heartbeat_task.cancel()

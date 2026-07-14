@@ -200,6 +200,27 @@ When testing bot changes:
 - Subscription fields exist but are not currently used in bot logic
 - `last_request_time` tracking is handled in FSM state data, not in database model
 
+## Health Checks
+
+Two liveness probes, one per process:
+
+- `GET /healthz` - the web app: Django answers and the database responds.
+- `GET /healthz/bot` - the bot process: it runs in a separate container with no HTTP of
+  its own, so it writes a heartbeat and this view reads it. 200, or 503 with a
+  `problems` list.
+
+`bot/services/heartbeat.py` holds both sides. The bot beats `loop` every 30s (proves the
+event loop is not stuck) and calls `getMe` every 5 minutes (proves the Telegram session
+is alive, not just the process). Stale after 180s and 900s respectively. The heartbeat
+goes through the `bot_heartbeats` table, not Redis: Redis lives on the VPS host and only
+the bot container can reach it (`network_mode: host`), while the database is mounted
+into both.
+
+This catches what `restart: always` cannot — a process that is up but stuck. Point an
+external monitor (Uptime Kuma) at `https://mac.eremenko.live/healthz` and
+`/healthz/bot`, accepted status `200`. Compose runs the same checks as container
+healthchecks; the bot's uses `python manage.py healthcheck_bot`.
+
 ## Deployment
 
 Project uses Docker Compose for deployment to VPS.
