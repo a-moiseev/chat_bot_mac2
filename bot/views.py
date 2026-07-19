@@ -29,6 +29,17 @@ def _format_date_ru(dt):
     return f"{local_dt.day} {RU_MONTHS[local_dt.month - 1]} {local_dt.year}"
 
 
+def client_ip(group, request):
+    """Ключ лимитера: IP клиента, а не прокси.
+
+    За nginx REMOTE_ADDR - адрес контейнера прокси, одинаковый для всех посетителей,
+    поэтому key="ip" складывал всех в один счетчик. nginx перезаписывает X-Real-IP
+    адресом соединения (proxy_set_header X-Real-IP $remote_addr), так что подделать
+    заголовок клиент не может. REMOTE_ADDR остается запасным - для запусков без nginx.
+    """
+    return request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR", "")
+
+
 async def _notify_telegram(telegram_id: int, text: str) -> None:
     if not settings.TELEGRAM_BOT_TOKEN:
         logger.warning(f"[NOTIFY] TELEGRAM_BOT_TOKEN not set, skipping notification to {telegram_id}")
@@ -349,7 +360,7 @@ def prodamus_success(request):
     return render(request, "bot/payment_success.html", context)
 
 
-@ratelimit(key="ip", rate="30/m", block=True)
+@ratelimit(key=client_ip, rate="30/m", block=True)
 @require_GET
 def subscription_info(request, token):
     """Страница информации о подписке пользователя"""
@@ -383,7 +394,7 @@ def subscription_info(request, token):
     return render(request, "bot/subscription_info.html", context)
 
 
-@ratelimit(key="ip", rate="30/m", block=True)
+@ratelimit(key=client_ip, rate="30/m", block=True)
 @require_GET
 def payment_select(request, token):
     """Страница выбора тарифа
@@ -437,7 +448,7 @@ def payment_select(request, token):
     return render(request, "bot/payment_select.html", context)
 
 
-@ratelimit(key="ip", rate="10/m", block=True)
+@ratelimit(key=client_ip, rate="10/m", block=True)
 @require_POST
 def payment_process(request, token):
     """Обработка выбора тарифа и создание платежа

@@ -99,6 +99,16 @@ DATABASES = {
     }
 }
 
+# Счетчики ratelimit лежат в кэше. LocMemCache по умолчанию своя у каждого воркера
+# gunicorn, поэтому лимит фактически удваивался и обнулялся при каждом деплое.
+# Хостовый Redis из контейнера django недоступен, так что кэш в БД.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
+    }
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
