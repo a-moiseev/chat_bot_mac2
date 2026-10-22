@@ -141,6 +141,21 @@ class TelegramProfile(models.Model):
         self.subscription_expires_at = timezone.now()
         self.save(update_fields=["subscription_expires_at", "updated_at"])
 
+    def gift_subscription(self, subscription_plan):
+        """Подарить подписку: продлить, если такой же план уже активен, иначе активировать."""
+        if subscription_plan.code == "free":
+            self.activate_subscription(subscription_plan)
+            return
+        same_plan_active = (
+            self.current_subscription_id == subscription_plan.id
+            and self.subscription_expires_at
+            and self.subscription_expires_at > timezone.now()
+        )
+        if same_plan_active:
+            self.extend_subscription(subscription_plan)
+        else:
+            self.activate_subscription(subscription_plan)
+
 
 class StateType(models.Model):
     id = models.AutoField(primary_key=True)
