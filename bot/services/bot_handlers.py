@@ -8,7 +8,7 @@ import yaml
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ContentType, ParseMode
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.base import BaseStorage
@@ -584,23 +584,73 @@ class MacBot:
             f"Сообщения отправлены: {sent_count}\nОшибки отправки: {failed_count}"
         )
 
-    async def stats_handler(self, message: Message) -> None:
+    async def stats_handler(self, message: Message, command: CommandObject) -> None:
         if not await self.db.is_staff(message.from_user.id):
             return
 
+        days = 7
+        if command.args:
+            arg = command.args.strip()
+            if not arg.isdigit() or not 1 <= int(arg) <= 30:
+                await message.answer("Использование: /stats [дней от 1 до 30]")
+                return
+            days = int(arg)
+
         try:
-            stats = await self.db.get_statistics()
-
-            stats_text = f"""📊 <b>Статистика бота</b>
-👥 <b>Пользователи:</b>
-• Всего: {stats['total_users']}
-• За последние 7 дней: {stats['recent_users']}
-• Завершенных сессий: {stats['completed_sessions']}"""
-            await message.answer(stats_text)
-
+            stats = await self.db.get_statistics(days)
+            await message.answer(self._format_stats(stats))
         except Exception as e:
             self.logger.error(f"Ошибка получения статистики: {e}")
             await message.answer("Произошла ошибка при получении статистики")
+
+    @staticmethod
+    def _format_stats(stats: dict) -> str:
+        cur, prev = stats["current"], stats["previous"]
+
+        def percent(part: int, whole: int) -> str:
+            return f" — {round(part * 100 / whole)}%" if whole else ""
+
+        # Переходы пишутся по отвеченному шагу, а ждем ответа на следующий
+        order = [state.state.split(":")[-1] for state in MacStates.__all_states__]
+        waiting = {}
+        for answered, count in stats["stuck"].items():
+            index = order.index(answered) if answered in order else -1
+            name = order[index + 1] if 0 <= index < len(order) - 1 else answered
+            waiting[name] = waiting.get(name, 0) + count
+        top = sorted(waiting.items(), key=lambda item: -item[1])[:3]
+
+        lines = [
+            "<b>Статистика бота</b>",
+            f"за {stats['days']} дн. (в скобках — предыдущие {stats['days']} дн.)",
+            "",
+            "<b>Аудитория</b>",
+            f"• Новых: {cur['new_users']} ({prev['new_users']})",
+            f"• Активных: {cur['active_users']} ({prev['active_users']})"
+            " — начали хотя бы одну сессию",
+            f"• Всего в базе: {stats['total_users']}",
+            "",
+            "<b>Сессии</b>",
+            f"• Начато: {cur['started']} ({prev['started']})",
+            f"• Завершено: {cur['completed']} ({prev['completed']})"
+            + percent(cur["completed"], cur["started"]),
+        ]
+        if top:
+            lines.append("• Бросили на шаге:")
+            lines += [
+                f"   – {MacStates.states_descriptions.get(name, name)}: {count}"
+                for name, count in top
+            ]
+        lines += [
+            "",
+            f"<b>Брошенные оплаты:</b> {stats['abandoned_payments']}"
+            " — открыли оплату и не заплатили",
+            "",
+            f"За всё время: пользователей {stats['total_users']}, "
+            f"сессий {stats['total_sessions']}, "
+            f"завершено {stats['total_completed']}"
+            + percent(stats["total_completed"], stats["total_sessions"]),
+        ]
+        return "\n".join(lines)
 
     async def subscribe_handler(self, message: Message) -> None:
         """Обработчик команды /subscribe - показывает информацию о подписке"""

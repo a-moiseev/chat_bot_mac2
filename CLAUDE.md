@@ -158,7 +158,7 @@ def add_user_state(self, user_id: int, state_name: str, description: str = None)
 ### Staff Commands
 
 - `/send_all`: Broadcast message to all users (requires RedisStorage)
-- `/stats`: Show bot statistics (total users, recent users, completed sessions)
+- `/stats [days]`: Bot statistics for the last N days (1-30, default 7) vs the previous N days: new/active users, started/completed sessions, steps where sessions are dropped, abandoned payments, all-time totals
 
 Both require `User.is_staff = True` in Django admin.
 

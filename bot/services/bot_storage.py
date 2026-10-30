@@ -116,37 +116,102 @@ class DjangoStorage:
             return False
 
     @sync_to_async
-    def get_statistics(self) -> dict:
-        """Получение статистики по пользователям и состояниям"""
+    def get_statistics(self, days: int = 7) -> dict:
+        """Статистика за последние `days` дней и за такой же период до них"""
         try:
-            # Общее количество пользователей
-            total_users = TelegramProfile.objects.count()
+            now = timezone.now()
+            period_start = now - timedelta(days=days)
+            prev_start = period_start - timedelta(days=days)
 
-            # Пользователи за последние 7 дней
-            week_ago = timezone.now() - timedelta(days=7)
-            recent_users = TelegramProfile.objects.filter(
-                created_at__gte=week_ago
-            ).count()
-
-            # Завершенные сессии (пользователи, дошедшие до work_finish)
-            completed_sessions = (
-                UserState.objects.filter(
-                    state_type__state_name__icontains="work_finish"
+            def period(since, until):
+                sessions = UserSession.objects.filter(
+                    started_at__gte=since, started_at__lt=until
                 )
-                .values("telegram_profile")
-                .distinct()
-                .count()
-            )
+                return {
+                    "new_users": TelegramProfile.objects.filter(
+                        created_at__gte=since, created_at__lt=until
+                    ).count(),
+                    "active_users": sessions.values("telegram_profile")
+                    .distinct()
+                    .count(),
+                    "started": sessions.count(),
+                    "completed": sessions.filter(completed_at__isnull=False).count(),
+                }
 
             return {
-                "total_users": total_users,
-                "recent_users": recent_users,
-                "completed_sessions": completed_sessions,
+                "days": days,
+                "current": period(period_start, now),
+                "previous": period(prev_start, period_start),
+                "stuck": self._stuck_states(period_start, now),
+                "abandoned_payments": self._abandoned_payments(period_start),
+                "total_users": TelegramProfile.objects.count(),
+                # UserSession появилась позже UserState, поэтому за всё время
+                # считаем по переходам: work_1 - карта выдана, work_finish - конец
+                "total_sessions": UserState.objects.filter(
+                    state_type__state_name__endswith=":work_1"
+                ).count(),
+                "total_completed": UserState.objects.filter(
+                    state_type__state_name__endswith=":work_finish"
+                ).count(),
             }
 
         except Exception as e:
             logger.error(f"Ошибка получения статистики: {e}")
             raise
+
+    @staticmethod
+    def _stuck_states(since, until) -> dict:
+        """Последний отвеченный шаг каждой незавершенной сессии периода.
+
+        Переход пишется, когда пользователь ответил на шаг, поэтому застрял он
+        на следующем. Сессия создается сразу после ответа на work_1: если после
+        старта переходов нет, последним отвеченным считаем work_1.
+        Сессии моложе часа не считаем: они, скорее всего, еще идут.
+        """
+        unfinished = UserSession.objects.filter(
+            started_at__gte=since,
+            started_at__lt=min(until, timezone.now() - timedelta(hours=1)),
+            completed_at__isnull=True,
+        )
+        counts = {}
+        for session in unfinished:
+            next_start = (
+                UserSession.objects.filter(
+                    telegram_profile_id=session.telegram_profile_id,
+                    started_at__gt=session.started_at,
+                )
+                .order_by("started_at")
+                .values_list("started_at", flat=True)
+                .first()
+            )
+            states = UserState.objects.filter(
+                telegram_profile_id=session.telegram_profile_id,
+                created_at__gte=session.started_at,
+            )
+            if next_start:
+                states = states.filter(created_at__lt=next_start)
+            last = (
+                states.order_by("-created_at")
+                .values_list("state_type__state_name", flat=True)
+                .first()
+            )
+            name = last.split(":")[-1] if last else "work_1"
+            counts[name] = counts.get(name, 0) + 1
+        return counts
+
+    @staticmethod
+    def _abandoned_payments(since) -> int:
+        """Люди, открывшие оплату за период и так ничего и не оплатившие"""
+        paid = Payment.objects.filter(
+            status="success", created_at__gte=since
+        ).values("telegram_profile")
+        return (
+            Payment.objects.filter(status="pending", created_at__gte=since)
+            .exclude(telegram_profile__in=paid)
+            .values("telegram_profile")
+            .distinct()
+            .count()
+        )
 
     @sync_to_async
     def update_user_email(self, user_id: int, email: str) -> bool:
