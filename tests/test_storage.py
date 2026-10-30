@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 import pytest
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User as DjangoUser
+from django.utils import timezone
 
-from bot.models import StateType, TelegramProfile, UserState
+from bot.models import Payment, StateType, TelegramProfile, UserSession, UserState
 
 
 @pytest.mark.asyncio
@@ -151,9 +154,19 @@ class TestDjangoStorageGetStatistics:
     async def test_statistics_empty_database(self, storage):
         """Статистика для пустой БД"""
         stats = await storage.get_statistics()
+        assert stats["days"] == 7
         assert stats["total_users"] == 0
-        assert stats["recent_users"] == 0
-        assert stats["completed_sessions"] == 0
+        assert stats["current"] == {
+            "new_users": 0,
+            "active_users": 0,
+            "started": 0,
+            "completed": 0,
+        }
+        assert stats["previous"] == stats["current"]
+        assert stats["stuck"] == {}
+        assert stats["abandoned_payments"] == 0
+        assert stats["total_sessions"] == 0
+        assert stats["total_completed"] == 0
 
     async def test_statistics_total_users(self, storage, free_subscription):
         """Подсчет total_users"""
@@ -166,16 +179,193 @@ class TestDjangoStorageGetStatistics:
         stats = await storage.get_statistics()
         assert stats["total_users"] == 3
 
-    async def test_statistics_completed_sessions(self, storage, telegram_profile):
-        """Подсчет completed_sessions (distinct пользователи)"""
-        work_finish = await sync_to_async(StateType.objects.create)(state_name="work_finish")
-        await sync_to_async(UserState.objects.create)(
-            telegram_profile=telegram_profile,
-            state_type=work_finish
+    async def test_statistics_all_time_counts_transitions(
+        self, storage, telegram_profile
+    ):
+        """За всё время сессии считаются по work_1, завершения по work_finish"""
+        work_1 = await sync_to_async(StateType.objects.create)(
+            state_name="MacStates:work_1"
         )
-        await sync_to_async(UserState.objects.create)(
-            telegram_profile=telegram_profile,
-            state_type=work_finish
+        work_finish = await sync_to_async(StateType.objects.create)(
+            state_name="MacStates:work_finish"
+        )
+        for state in (work_1, work_1, work_finish):
+            await sync_to_async(UserState.objects.create)(
+                telegram_profile=telegram_profile, state_type=state
+            )
+        stats = await storage.get_statistics()
+        assert stats["total_sessions"] == 2
+        assert stats["total_completed"] == 1
+
+    async def test_statistics_period_and_previous(self, storage, telegram_profile):
+        """Сессии делятся на текущий и предыдущий период"""
+        now = timezone.now()
+        await make_session(telegram_profile, now - timedelta(days=1), completed=True)
+        await make_session(telegram_profile, now - timedelta(days=2))
+        await make_session(telegram_profile, now - timedelta(days=10), completed=True)
+        await make_session(telegram_profile, now - timedelta(days=20))
+
+        stats = await storage.get_statistics(7)
+        assert stats["current"]["started"] == 2
+        assert stats["current"]["completed"] == 1
+        assert stats["current"]["active_users"] == 1
+        assert stats["current"]["new_users"] == 1
+        assert stats["previous"]["started"] == 1
+        assert stats["previous"]["completed"] == 1
+        assert stats["previous"]["new_users"] == 0
+
+    async def test_statistics_custom_days(self, storage, telegram_profile):
+        """Период задается параметром"""
+        await make_session(telegram_profile, timezone.now() - timedelta(days=20))
+        stats = await storage.get_statistics(30)
+        assert stats["days"] == 30
+        assert stats["current"]["started"] == 1
+
+    async def test_statistics_stuck_last_answered_step(
+        self, storage, telegram_profile
+    ):
+        """Для незавершенной сессии берется последний отвеченный шаг"""
+        started = timezone.now() - timedelta(days=1)
+        await make_session(telegram_profile, started)
+        await make_state(telegram_profile, "work_2", started + timedelta(minutes=1))
+        await make_state(telegram_profile, "work_3", started + timedelta(minutes=2))
+
+        stats = await storage.get_statistics()
+        assert stats["stuck"] == {"work_3": 1}
+
+    async def test_statistics_stuck_without_answers(self, storage, telegram_profile):
+        """Без ответов после выдачи карты последним отвеченным считается work_1"""
+        await make_session(telegram_profile, timezone.now() - timedelta(days=1))
+        stats = await storage.get_statistics()
+        assert stats["stuck"] == {"work_1": 1}
+
+    async def test_statistics_stuck_bounded_by_next_session(
+        self, storage, telegram_profile
+    ):
+        """Переходы следующей сессии не относятся к предыдущей"""
+        first = timezone.now() - timedelta(days=2)
+        second = timezone.now() - timedelta(days=1)
+        await make_session(telegram_profile, first)
+        await make_session(telegram_profile, second)
+        await make_state(telegram_profile, "work_4", second + timedelta(minutes=1))
+
+        stats = await storage.get_statistics()
+        assert stats["stuck"] == {"work_1": 1, "work_4": 1}
+
+    async def test_statistics_stuck_ignores_fresh_and_completed(
+        self, storage, telegram_profile
+    ):
+        """Свежие и завершенные сессии не считаются брошенными"""
+        await make_session(telegram_profile, timezone.now() - timedelta(minutes=10))
+        await make_session(
+            telegram_profile, timezone.now() - timedelta(days=1), completed=True
         )
         stats = await storage.get_statistics()
-        assert stats["completed_sessions"] == 1
+        assert stats["stuck"] == {}
+
+    async def test_statistics_abandoned_payments(
+        self, storage, telegram_profile, subscribed_profile, premium_subscription
+    ):
+        """Брошенная оплата - pending без успешной оплаты того же человека"""
+        for order_id, profile, status in [
+            ("a1", telegram_profile, "pending"),
+            ("a2", telegram_profile, "pending"),
+            ("b1", subscribed_profile, "pending"),
+            ("b2", subscribed_profile, "success"),
+        ]:
+            await sync_to_async(Payment.objects.create)(
+                telegram_profile=profile,
+                subscription_plan=premium_subscription,
+                order_id=order_id,
+                amount=990,
+                status=status,
+            )
+        stats = await storage.get_statistics()
+        assert stats["abandoned_payments"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+class TestDjangoStorageGetRecentUsers:
+    """Тесты для DjangoStorage.get_recent_users"""
+
+    async def test_recent_users_empty(self, storage):
+        data = await storage.get_recent_users()
+        assert data == {"days": 7, "total": 0, "users": []}
+
+    async def test_recent_users_new_profile_without_states(
+        self, storage, telegram_profile
+    ):
+        """Только что зарегистрировавшийся пользователь попадает в список"""
+        data = await storage.get_recent_users()
+        assert data["total"] == 1
+        user = data["users"][0]
+        assert user["telegram_id"] == telegram_profile.telegram_id
+        assert user["is_new"] is True
+        assert user["is_paid"] is False
+        assert user["started"] == 0
+        assert user["last_state"] is None
+
+    async def test_recent_users_excludes_inactive(self, storage, telegram_profile):
+        """Пользователь без активности в периоде не показывается"""
+        await sync_to_async(
+            TelegramProfile.objects.filter(pk=telegram_profile.pk).update
+        )(created_at=timezone.now() - timedelta(days=40))
+        await make_state(telegram_profile, "work_2", timezone.now() - timedelta(days=20))
+        data = await storage.get_recent_users(7)
+        assert data["total"] == 0
+        data = await storage.get_recent_users(30)
+        assert data["total"] == 1
+        assert data["users"][0]["is_new"] is False
+
+    async def test_recent_users_sessions_and_last_state(
+        self, storage, telegram_profile
+    ):
+        started = timezone.now() - timedelta(days=1)
+        await make_session(telegram_profile, started, completed=True)
+        await make_session(telegram_profile, timezone.now() - timedelta(days=20))
+        await make_state(telegram_profile, "work_3", started + timedelta(minutes=1))
+
+        user = (await storage.get_recent_users())["users"][0]
+        assert user["started"] == 1
+        assert user["completed"] == 1
+        assert user["last_state"] == "work_3"
+
+    async def test_recent_users_order_and_limit(
+        self, storage, telegram_profile, subscribed_profile
+    ):
+        """Свежие первыми, лимит не влияет на total"""
+        await make_state(
+            subscribed_profile, "work_2", timezone.now() + timedelta(minutes=1)
+        )
+        data = await storage.get_recent_users(limit=1)
+        assert data["total"] == 2
+        assert len(data["users"]) == 1
+        assert data["users"][0]["telegram_id"] == subscribed_profile.telegram_id
+        assert data["users"][0]["is_paid"] is True
+
+
+async def make_session(profile, started_at, completed=False):
+    session = await sync_to_async(UserSession.objects.create)(
+        telegram_profile=profile,
+        request_text="request",
+        request_type="коучинговый",
+        card_type="день",
+        card_number=1,
+    )
+    await sync_to_async(UserSession.objects.filter(pk=session.pk).update)(
+        started_at=started_at,
+        completed_at=started_at + timedelta(minutes=30) if completed else None,
+    )
+
+
+async def make_state(profile, name, created_at):
+    state_type, _ = await sync_to_async(StateType.objects.get_or_create)(
+        state_name=f"MacStates:{name}"
+    )
+    state = await sync_to_async(UserState.objects.create)(
+        telegram_profile=profile, state_type=state_type
+    )
+    await sync_to_async(UserState.objects.filter(pk=state.pk).update)(
+        created_at=created_at
+    )

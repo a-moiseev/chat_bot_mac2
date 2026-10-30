@@ -1,8 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Chat, Message, User
+from django.utils import timezone
 
 from bot.services.bot_handlers import MacBot
 from bot.services.payment_token import validate_payment_token
@@ -282,3 +284,147 @@ class TestSubscribeHandler:
             )
 
             assert "подписк" in message_text.lower()
+
+
+def make_command(args):
+    command = MagicMock(spec=CommandObject)
+    command.args = args
+    return command
+
+
+class TestParseDays:
+    @pytest.mark.parametrize(
+        "args, expected",
+        [(None, 7), ("1", 1), ("30", 30), (" 14 ", 14), ("0", None), ("31", None),
+         ("abc", None), ("-5", None)],
+    )
+    def test_parse_days(self, args, expected):
+        assert MacBot._parse_days(make_command(args)) == expected
+
+
+class TestWaitingStep:
+    def test_next_step_after_answered(self):
+        assert MacBot._waiting_step("work_3") == "work_4"
+        assert MacBot._waiting_step("work_1") == "work_2"
+
+    def test_no_state_waits_for_request(self):
+        assert MacBot._waiting_step(None) == "get_request"
+
+    def test_last_and_unknown_steps_kept(self):
+        assert MacBot._waiting_step("work_finish") == "work_finish"
+        assert MacBot._waiting_step("legacy") == "legacy"
+
+
+def stats_data(**overrides):
+    period = {"new_users": 3, "active_users": 2, "started": 4, "completed": 1}
+    data = {
+        "days": 7,
+        "current": period,
+        "previous": {"new_users": 1, "active_users": 1, "started": 2, "completed": 2},
+        "stuck": {"work_3": 2, "work_1": 1},
+        "abandoned_payments": 5,
+        "total_users": 62,
+        "total_sessions": 140,
+        "total_completed": 46,
+    }
+    data.update(overrides)
+    return data
+
+
+class TestFormatStats:
+    def test_format_stats(self):
+        text = MacBot._format_stats(stats_data())
+        assert "за 7 дн." in text
+        assert "Новых: 3 (1)" in text
+        assert "Завершено: 1 (2) — 25%" in text
+        assert "Описание приятного персонажа: 2" in text
+        assert "Описание чувств и эмоций от карты: 1" in text
+        assert "Брошенные оплаты:</b> 5" in text
+        assert "сессий 140, завершено 46 — 33%" in text
+
+    def test_format_stats_empty(self):
+        empty = {"new_users": 0, "active_users": 0, "started": 0, "completed": 0}
+        text = MacBot._format_stats(
+            stats_data(current=empty, previous=empty, stuck={}, total_sessions=0)
+        )
+        assert "Бросили на шаге" not in text
+        assert "%" not in text
+
+
+class TestFormatUsers:
+    def user(self, **overrides):
+        data = {
+            "telegram_id": 42,
+            "username": "anna",
+            "first_name": "Анна <b>",
+            "last_seen": timezone.now(),
+            "is_new": True,
+            "is_paid": True,
+            "started": 2,
+            "completed": 1,
+            "last_state": "work_3",
+        }
+        data.update(overrides)
+        return data
+
+    def test_format_users(self):
+        text = MacBot._format_users({"days": 7, "total": 1, "users": [self.user()]})
+        assert '<a href="tg://user?id=42">Анна &lt;b&gt;</a> @anna' in text
+        assert "новый · подписка · сессий 2, завершено 1" in text
+        assert "ждём ответа: Описание приятного персонажа" in text
+        assert "показаны" not in text
+
+    def test_format_users_finished_and_truncated(self):
+        user = self.user(
+            first_name="", username=None, is_new=False, is_paid=False,
+            started=0, last_state="work_finish",
+        )
+        text = MacBot._format_users({"days": 30, "total": 25, "users": [user]})
+        assert "показаны последние 1" in text
+        assert '<a href="tg://user?id=42">42</a> —' in text
+        assert "последняя сессия завершена" in text
+        assert "сессий" not in text
+
+    def test_format_users_empty(self):
+        text = MacBot._format_users({"days": 7, "total": 0, "users": []})
+        assert text == "За 7 дн. никто не заходил"
+
+
+@pytest.mark.asyncio
+class TestStaffCommands:
+    def make_bot(self, is_staff=True):
+        with patch("bot.services.bot_handlers.MacBot._load_config") as config, patch(
+            "bot.services.bot_handlers.Bot"
+        ), patch("bot.services.bot_handlers.Dispatcher"):
+            config.return_value = {"messages_work": [""] * 30}
+            bot = MacBot()
+        bot.db = MagicMock()
+        bot.db.is_staff = AsyncMock(return_value=is_staff)
+        bot.db.get_statistics = AsyncMock(return_value=stats_data(days=14))
+        bot.db.get_recent_users = AsyncMock(
+            return_value={"days": 7, "total": 0, "users": []}
+        )
+        return bot
+
+    async def test_stats_passes_days(self, mock_message):
+        bot = self.make_bot()
+        await bot.stats_handler(mock_message, make_command("14"))
+        bot.db.get_statistics.assert_awaited_once_with(14)
+        assert "за 14 дн." in mock_message.answer.call_args.args[0]
+
+    async def test_stats_rejects_bad_days(self, mock_message):
+        bot = self.make_bot()
+        await bot.stats_handler(mock_message, make_command("100"))
+        bot.db.get_statistics.assert_not_awaited()
+        assert "Использование" in mock_message.answer.call_args.args[0]
+
+    async def test_users_default_days(self, mock_message):
+        bot = self.make_bot()
+        await bot.users_handler(mock_message, make_command(None))
+        bot.db.get_recent_users.assert_awaited_once_with(7)
+
+    async def test_non_staff_ignored(self, mock_message):
+        bot = self.make_bot(is_staff=False)
+        await bot.stats_handler(mock_message, make_command(None))
+        await bot.users_handler(mock_message, make_command(None))
+        mock_message.answer.assert_not_called()
