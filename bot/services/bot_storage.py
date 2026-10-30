@@ -4,6 +4,8 @@ from typing import Optional
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User as DjangoUser
+from django.db.models import Max
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from bot.models import (
@@ -212,6 +214,42 @@ class DjangoStorage:
             .distinct()
             .count()
         )
+
+    @sync_to_async
+    def get_recent_users(self, days: int = 7, limit: int = 20) -> dict:
+        """Пользователи, активные за последние `days` дней, свежие первыми"""
+        since = timezone.now() - timedelta(days=days)
+        profiles = (
+            TelegramProfile.objects.annotate(
+                last_seen=Coalesce(Max("states__created_at"), "created_at")
+            )
+            .filter(last_seen__gte=since)
+            .select_related("current_subscription")
+            .order_by("-last_seen")
+        )
+        users = []
+        for profile in profiles[:limit]:
+            sessions = profile.sessions.filter(started_at__gte=since)
+            last_state = (
+                profile.states.order_by("-created_at")
+                .values_list("state_type__state_name", flat=True)
+                .first()
+            )
+            plan = profile.current_subscription
+            users.append(
+                {
+                    "telegram_id": profile.telegram_id,
+                    "username": profile.username,
+                    "first_name": profile.first_name,
+                    "last_seen": profile.last_seen,
+                    "is_new": profile.created_at >= since,
+                    "is_paid": profile.is_subscribed and plan.code != "free",
+                    "started": sessions.count(),
+                    "completed": sessions.filter(completed_at__isnull=False).count(),
+                    "last_state": last_state.split(":")[-1] if last_state else None,
+                }
+            )
+        return {"days": days, "total": profiles.count(), "users": users}
 
     @sync_to_async
     def update_user_email(self, user_id: int, email: str) -> bool:

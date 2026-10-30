@@ -1,4 +1,5 @@
 import asyncio
+import html
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ from aiogram.types import (
 )
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.utils import timezone
 from redis.asyncio import Redis
 
 from bot.services import heartbeat
@@ -173,6 +175,7 @@ class MacBot:
         self.dp.message.register(self.command_start_handler, CommandStart())
         self.dp.message.register(self.send_all_handler, Command("send_all"))
         self.dp.message.register(self.stats_handler, Command("stats"))
+        self.dp.message.register(self.users_handler, Command("users"))
         self.dp.message.register(self.subscribe_handler, Command("subscribe"))
         self.dp.message.register(self.oferta_handler, Command("oferta"))
         self.dp.message.register(self.privacy_handler, Command("privacy"))
@@ -588,13 +591,10 @@ class MacBot:
         if not await self.db.is_staff(message.from_user.id):
             return
 
-        days = 7
-        if command.args:
-            arg = command.args.strip()
-            if not arg.isdigit() or not 1 <= int(arg) <= 30:
-                await message.answer("Использование: /stats [дней от 1 до 30]")
-                return
-            days = int(arg)
+        days = self._parse_days(command)
+        if days is None:
+            await message.answer("Использование: /stats [дней от 1 до 30]")
+            return
 
         try:
             stats = await self.db.get_statistics(days)
@@ -610,12 +610,9 @@ class MacBot:
         def percent(part: int, whole: int) -> str:
             return f" — {round(part * 100 / whole)}%" if whole else ""
 
-        # Переходы пишутся по отвеченному шагу, а ждем ответа на следующий
-        order = [state.state.split(":")[-1] for state in MacStates.__all_states__]
         waiting = {}
         for answered, count in stats["stuck"].items():
-            index = order.index(answered) if answered in order else -1
-            name = order[index + 1] if 0 <= index < len(order) - 1 else answered
+            name = MacBot._waiting_step(answered)
             waiting[name] = waiting.get(name, 0) + count
         top = sorted(waiting.items(), key=lambda item: -item[1])[:3]
 
@@ -650,6 +647,78 @@ class MacBot:
             f"завершено {stats['total_completed']}"
             + percent(stats["total_completed"], stats["total_sessions"]),
         ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _parse_days(command: CommandObject, default: int = 7) -> int | None:
+        if not command.args:
+            return default
+        arg = command.args.strip()
+        if not arg.isdigit() or not 1 <= int(arg) <= 30:
+            return None
+        return int(arg)
+
+    @staticmethod
+    def _waiting_step(answered: str | None) -> str:
+        """Шаг, на котором ждем ответа: переход пишется по уже отвеченному"""
+        order = [state.state.split(":")[-1] for state in MacStates.__all_states__]
+        if answered is None:
+            return order[0]
+        index = order.index(answered) if answered in order else -1
+        return order[index + 1] if 0 <= index < len(order) - 1 else answered
+
+    async def users_handler(self, message: Message, command: CommandObject) -> None:
+        if not await self.db.is_staff(message.from_user.id):
+            return
+
+        days = self._parse_days(command)
+        if days is None:
+            await message.answer("Использование: /users [дней от 1 до 30]")
+            return
+
+        try:
+            data = await self.db.get_recent_users(days)
+            await message.answer(self._format_users(data))
+        except Exception as e:
+            self.logger.error(f"Ошибка получения списка пользователей: {e}")
+            await message.answer("Произошла ошибка при получении списка пользователей")
+
+    @staticmethod
+    def _format_users(data: dict) -> str:
+        users = data["users"]
+        if not users:
+            return f"За {data['days']} дн. никто не заходил"
+
+        header = f"<b>Пользователи за {data['days']} дн.</b>: {data['total']}"
+        if data["total"] > len(users):
+            header += f", показаны последние {len(users)}"
+        lines = [header]
+
+        for i, user in enumerate(users, 1):
+            name = html.escape(user["first_name"] or str(user["telegram_id"]))
+            link = f'<a href="tg://user?id={user["telegram_id"]}">{name}</a>'
+            if user["username"]:
+                link += f" @{html.escape(user['username'])}"
+            seen = timezone.localtime(user["last_seen"]).strftime("%d.%m %H:%M")
+
+            details = []
+            if user["is_new"]:
+                details.append("новый")
+            if user["is_paid"]:
+                details.append("подписка")
+            if user["started"]:
+                details.append(
+                    f"сессий {user['started']}, завершено {user['completed']}"
+                )
+            if user["last_state"] == "work_finish":
+                details.append("последняя сессия завершена")
+            else:
+                step = MacBot._waiting_step(user["last_state"])
+                details.append(
+                    f"ждём ответа: {MacStates.states_descriptions.get(step, step)}"
+                )
+
+            lines += ["", f"{i}. {link} — {seen}", "   " + " · ".join(details)]
         return "\n".join(lines)
 
     async def subscribe_handler(self, message: Message) -> None:
